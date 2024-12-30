@@ -1,17 +1,25 @@
+/*
+* PD Stepper Servo Controller
+* Copyright (C) 2025 Ctrl^H Hackerspace
+*/
+
 //
 // Includes
 //
 
 // Standard library
+
 #include <stdio.h>
 #include <string.h>
 
 // Multi-threading
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/event_groups.h"
 
 // Networking
+
 #include "esp_wifi.h"
 #include "esp_event.h"
 #include "esp_log.h"
@@ -20,23 +28,30 @@
 #include "lwip/sys.h"
 #include "lwip/netdb.h"
 
-// TMC2209 Stepper
+// TMC2209 Stepper Motor Driver
+
 #include <TMC2209.h>
 
 // AS5600 Hall Effect Encoder
+
 #include <Wire.h>
 
-// Saving settings to flash memory
+// Flash memory
+
 #include <Preferences.h>
 
 //
 // Constants
 //
 
-const char *WIFI_SSID = "your-ssid";         // TODO: move to flash
-const char *WIFI_PASSWORD = "your-password"; // TODO: move to flash
+// Wifi
+
+const char* WIFI_SSID = "your-ssid";         // TODO: move to flash
+const char* WIFI_PASSWORD = "your-password"; // TODO: move to flash
 const int PORT = 8080;                       // TODO: move to flash
-const char *APPNAME = "PDStepperServo";
+
+// Controller
+
 const int RATE_HZ = 50;
 const int TIMESTEP_MS = 1000 / RATE_HZ;
 
@@ -48,47 +63,29 @@ const float AS5600_MAX = 4096;
 
 // Stepper driver
 
-const long SERIAL_BAUD_RATE = 115200;
-const uint8_t RUN_CURRENT_PERCENT = 100;
-// TMC2209 enabled pin
-const int TMC_EN = 21;
-// TMC2209 step pin
-const int STEP = 5;
-// TMC2209 direction pin
-const int DIR = 6;
-// MS1 ??
-const int MS1 = 1;
-// MS2 ??
-const int MS2 = 2;
-// Spread?
-const int SPREAD = 7;
-// TMC2209 TX pin
+const long TMC_SERIAL_BAUD_RATE = 115200;
+const uint8_t TMC_RUN_CURRENT_PERCENT = 100;
+const int TMC_ENABLED = 21;
+const int TMC_STEP = 5;
+const int TMC_DIR = 6;
+const int TMC_MS1 = 1;
+const int TMC_MS2 = 2;
+const int TMC_SPREAD = 7;
 const int TMC_TX = 17;
-// TMC2209 RX pin
 const int TMC_RX = 18;
-const int DIAG = 16;
-const int INDEX = 11;
-// TMC2209 standstill mode
-enum STANDSTILL_MODE
-{
-  STANDSTILL_NORMAL,
-  STANDSTILL_FREEWHEELING,
-  STANDSTILL_BRAKING,
-  STANDSTILL_STRONG_BRAKING
-};
+const int TMC_OVERCURRENT = 16;
+const int TMC_INDEX = 11;
 
 // USB Power Delivery
 
-// Power Good pin
-const int PG = 15;
+const int PD_POWERGOOD = 15;
+const int PD_CFG1 = 38;
+const int PD_CFG2 = 48;
+const int PD_CFG3 = 47;
+const float PD_VREF = 3.3;
+const float PD_DIV = 0.1189427313;
 
-// Configuration pins
-const int CFG1 = 38;
-const int CFG2 = 48;
-const int CFG3 = 47;
-
-// Supported voltages
-enum VOLTAGE
+enum PD_VOLTAGE
 {
   5V = 5,
   9V = 9,
@@ -97,36 +94,32 @@ enum VOLTAGE
   20V = 20
 };
 
-// 20k & 2.7K Voltage Divider
-const float DIV_RATIO = 0.1189427313;
-
 // PD Stepper Board
 
-const int VBUS = 4;
-const int NTC = 7;
-const int LED1 = 10;
-const int LED2 = 12;
-const int SW1 = 35;
-const int SW2 = 36;
-const int SW3 = 37;
-const int AUX1 = 14;
-const int AUX2 = 13;
+const int BRD_VBUS = 4;
+const int BRD_NTC = 7;
+const int BRD_LED1 = 10;
+const int BRD_LED2 = 12;
+const int BRD_SW1 = 35;
+const int BRD_SW2 = 36;
+const int BRD_SW3 = 37;
+const int BRD_AUX1 = 14;
+const int BRD_AUX2 = 13;
+const unsigned long DEBOUNCE = 50;
 
 //
 // Variables
 //
 
-// Controller
-
-bool enabledState = 0;
-int set_speed = 0;
-signed long setPoint = 0;
-signed long CurrentPosition = 0;
-unsigned long lastStep = 0;
-
 // Wifi
 
-static EventGroupHandle_t wifi_event_group;
+static EventGroupHandle_t wifiEventGroup;
+
+// State
+
+bool enabled = 0;
+int velocityCommand = 0;
+signed long positionCommand = 0;
 
 // Encoder
 
@@ -134,49 +127,62 @@ float position = 0.0;
 
 // Stepper Driver
 
-TMC2209 stepperDriver;
-HardwareSerial &serial_stream = Serial2;
-bool state = 0;
+TMC2209 motorDriver;
+HardwareSerial &motorSerial = Serial2;
+bool motorState = false;
+bool motorDisabled = true;
+bool motorOverTemp = false;
+bool motorOverTempShutdown = false;
+bool motorStalled = false;
+unsigned int motorStallGuard = 0;
 
 // Power Delivery
-bool PGState = 0;
+
+bool powerGood = false;
 float voltage = 0;
-float VREF = 3.3;
 
 // Board
 
-bool incButtonState = HIGH;
-bool decButtonState = HIGH;
-bool resetButtonState = HIGH;
+bool incrementButtonPushed = false;
+bool decrementButtonPushed = false;
+bool resetButtonPushed = false;
+int buttonVelocity = 100;
 unsigned long lastDebounceTime = 0;
-unsigned long debounceDelay = 50;
-int buttonSpeed = 0;
 
 //
 // Forward Declarations
 //
 
-void stepperController(void *pvParameters);
-static void initWifi(void);
-static void wifiEventHandler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data) bool isPowerGood();
-float readVoltage();
-float readEncoder();
-bool isDisabled();
-bool isOverTempWarning();
-bool isOverTempShutdown();
-uint32_t getStallGuard();
+void initWifi(const char* ssid, const char* password);
+void wifiEventHandler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data);
+void initPower();
+void readPower();
+void initBoard();
+void readBoard();
+void writeBoard();
+void initEncoder();
+void readEncoder();
+void initMotor();
+void readMotor();
+void writeMotor(int runCurrent, int microstepsPerStep, int stallThreshold, TMC2209::StandstillMode standstillMode);
+void initMotorControl();
+void runMotorControl(void *pvParameters);
 
 //
 // Entry point
 //
 
-void setup(void)
+void setup()
 {
-  // Initialize Wifi
-  initWifi();
+  // Ensure bootloader mode entered correctly
+  delay(200);
 
-  // Create real-time motor control task
-  xTaskCreate(stepperController, "stepperController", 2048, NULL, configMAX_PRIORITIES - 1, NULL);
+  initWifi(WIFI_SSID, WIFI_PASSWORD);
+  initBoard();
+  initPower();
+  initMotor();
+  initEncoder();
+  initMotorControl();
 }
 
 //
@@ -185,37 +191,37 @@ void setup(void)
 
 void loop()
 {
-  char rx_buffer[128];
-  char addr_str[128];
-  int addr_len;
-  struct sockaddr_in dest_addr;
+  int destAddressLen;
+  struct sockaddr_in destAddress;
+  char buffer[128];
+  char address[128];
 
-  int listen_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
+  int listenSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
 
-  if (listen_sock < 0)
+  if (listenSocket < 0)
   {
     ESP_LOGE(APPNAME, "Unable to create socket: errno %d", errno);
     vTaskDelete(NULL);
     return;
   }
 
-  dest_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-  dest_addr.sin_family = AF_INET;
-  dest_addr.sin_port = htons(PORT);
-  addr_len = sizeof(dest_addr);
+  destAddress.sin_addr.s_addr = htonl(INADDR_ANY);
+  destAddress.sin_family = AF_INET;
+  destAddress.sin_port = htons(PORT);
+  destAddressLen = sizeof(destAddress);
 
-  if (bind(listen_sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr)) < 0)
+  if (bind(listenSocket, (struct sockaddr *)&destAddress, sizeof(destAddress)) < 0)
   {
     ESP_LOGE(APPNAME, "Socket unable to bind: errno %d", errno);
-    close(listen_sock);
+    close(listenSocket);
     vTaskDelete(NULL);
     return;
   }
 
-  if (listen(listen_sock, 1) < 0)
+  if (listen(listenSocket, 1) < 0)
   {
     ESP_LOGE(APPNAME, "Error occurred during listen: errno %d", errno);
-    close(listen_sock);
+    close(listenSocket);
     vTaskDelete(NULL);
     return;
   }
@@ -224,46 +230,49 @@ void loop()
 
   while (1)
   {
-    struct sockaddr_in6 source_addr;
-    socklen_t socklen = sizeof(source_addr);
-    int sock = accept(listen_sock, (struct sockaddr *)&source_addr, &socklen);
+    struct sockaddr_in6 sourceAddress;
+    socklen_t sourceAddressLen = sizeof(sourceAddress);
+    int socket = accept(listenSocket, (struct sockaddr *)&sourceAddress, &sourceAddressLen);
 
-    if (sock < 0)
+    if (socket < 0)
     {
       ESP_LOGE(APPNAME, "Unable to accept connection: errno %d", errno);
       break;
     }
 
     inet_ntoa_r(
-        ((struct sockaddr_in *)&source_addr)->sin_addr.s_addr, addr_str, sizeof(addr_str) - 1);
+      ((struct sockaddr_in *)&sourceAddress)->sin_addr.s_addr,
+      address,
+      sizeof(address) - 1);
 
-    ESP_LOGI(APPNAME, "Socket accepted connection from %s", addr_str);
+    ESP_LOGI(APPNAME, "Socket accepted connection from %s", address);
 
     while (1)
     {
-      int len = recv(sock, rx_buffer, sizeof(rx_buffer) - 1, 0);
-      if (len < 0)
+      int receivedLen = recv(socket, buffer, sizeof(buffer) - 1, 0);
+
+      if (receivedLen < 0)
       {
         ESP_LOGE(APPNAME, "recv failed: errno %d", errno);
         break;
       }
-      else if (len == 0)
+      else if (receivedLen == 0)
       {
         ESP_LOGI(APPNAME, "Connection closed");
         break;
       }
       else
       {
-        rx_buffer[len] = 0; // Null-terminate the received data
-        ESP_LOGI(APPNAME, "Received %d bytes: %s", len, rx_buffer);
+        buffer[receivedLen] = 0;
+        ESP_LOGI(APPNAME, "Received %d bytes: %s", receivedLen, buffer);
       }
     }
 
-    close(sock);
+    close(socket);
     ESP_LOGI(APPNAME, "Socket closed");
   }
 
-  close(listen_sock);
+  close(listenSocket);
   vTaskDelete(NULL);
 }
 
@@ -271,15 +280,31 @@ void loop()
 // RT thread
 //
 
-void stepperController(void *pvParameters)
+void initMotorControl()
+{
+  // Start real-time motor controller
+  xTaskCreate(runMotorControl, "MotorControl", 2048, NULL, configMAX_PRIORITIES - 1, NULL);
+}
+
+void runMotorControl(void *pvParameters)
 {
   const TickType_t freq = pdMS_TO_TICKS(TIMESTEP_MS);
   TickType_t lastTime = xTaskGetTickCount();
 
   while (1)
   {
-    // Perform real-time operations here
-    printf("Real-time task running at 50Hz\n");
+    readEncoder();
+    readMotor();
+    readPower();
+
+    if (powerGood && enabled && motorDisabled)
+    {
+      motorDriver.enable();
+    }
+    else if (!powerGood || (!enabled && !motorDisabled))
+    {
+      motorDriver.disable();
+    }
 
     // Sleep
     vTaskDelayUntil(&lastTime, freq);
@@ -290,9 +315,9 @@ void stepperController(void *pvParameters)
 // Helpers
 //
 
-static void initWifi(void)
+static void initWifi(const char* ssid, const char* password)
 {
-  wifi_event_group = xEventGroupCreate();
+  wifiEventGroup = xEventGroupCreate();
 
   esp_netif_init();
   esp_event_loop_create_default();
@@ -311,9 +336,10 @@ static void initWifi(void)
 
   wifi_config_t wifi_config =
   {
-    .sta = {
-        .ssid = WIFI_SSID,
-        .password = WIFI_PASSWORD,
+    .sta =
+    {
+      .ssid = ssid,
+      .password = password,
     }
   };
 
@@ -321,7 +347,7 @@ static void initWifi(void)
   esp_wifi_set_config(WIFI_IF_STA, &wifi_config);
   esp_wifi_start();
 
-  xEventGroupWaitBits(wifi_event_group, BIT0, pdFALSE, pdTRUE, portMAX_DELAY);
+  xEventGroupWaitBits(wifiEventGroup, BIT0, pdFALSE, pdTRUE, portMAX_DELAY);
 }
 
 static void wifiEventHandler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
@@ -334,30 +360,100 @@ static void wifiEventHandler(void *arg, esp_event_base_t event_base, int32_t eve
   {
     ESP_LOGI(APPNAME, "Disconnected from Wi-Fi. Reconnecting...");
     esp_wifi_connect();
-    xEventGroupClearBits(wifi_event_group, BIT0);
+    xEventGroupClearBits(wifiEventGroup, BIT0);
   }
   else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP)
   {
     ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
     ESP_LOGI(APPNAME, "Got IP: %s", ip4addr_ntoa(&event->ip_info.ip));
-    xEventGroupSetBits(wifi_event_group, BIT0);
+    xEventGroupSetBits(wifiEventGroup, BIT0);
   }
 }
 
-bool isPowerGood()
+void initPower()
 {
-  PGState = digitalRead(PG);
-  return PGState == 0;
+  pinMode(PD_POWERGOOD, INPUT);
+  pinMode(PD_CFG1, OUTPUT);
+  pinMode(PD_CFG2, OUTPUT);
+  pinMode(PD_CFG3, OUTPUT);
+
+  writeVoltage(5V);
 }
 
-float readVoltage()
+void readPower()
 {
   int adc = analogRead(VBUS);
-  voltage = adc * (VREF / 4096.0) / DIV_RATIO;
-  return voltage;
+  voltage = adc * (PD_VREF / 4096.0) / PD_DIV;
+
+  powerGood = digitalRead(PD_POWERGOOD) == 0;
 }
 
-void writeVoltage(VOLTAGE voltage)
+void initBoard()
+{
+  pinMode(BRD_SW1, INPUT);
+  pinMode(BRD_SW2, INPUT);
+  pinMode(BRD_SW3, INPUT);
+  pinMode(BRD_LED1, OUTPUT);
+  pinMode(BRD_LED2, OUTPUT);
+}
+
+void readBoard()
+{
+  if ((millis() - lastDebounceTime) > DEBOUNCE)
+  {
+    lastDebounceTime = millis();
+    incrementButtonPushed = digitalRead(SW3) == HIGH ? false : true;
+    decrementButtonPushed = digitalRead(SW1) == HIGH ? false : true;
+    resetButtonPushed = digitalRead(SW2) == HIGH ? false : true;
+  }
+}
+
+void writeBoard()
+{
+  digitalWrite(BRD_LED2, motorStalled ? HIGH : LOW);
+}
+
+void initMotor()
+{
+  pinMode(TMC_STEP, OUTPUT);
+  pinMode(TMC_DIR, OUTPUT);
+  pinMode(TMC_MS1, OUTPUT);
+  pinMode(TMC_MS1, OUTPUT);
+  pinMode(TMC_ENABLED, OUTPUT);
+  pinMode(TMC_OVERCURRENT, INPUT);
+
+  digitalWrite(TMC_ENABLED, LOW);
+  digitalWrite(TMC_MS1, LOW);
+  digitalWrite(TMC_MS2, LOW);
+
+  motorDriver.setup(motorSerial, SERIAL_BAUD_RATE, TMC2209::SERIAL_ADDRESS_0, TMC_RX, TMC_TX);
+  motorDriver.setRunCurrent(RUN_CURRENT_PERCENT);
+  motorDriver.enableAutomaticCurrentScaling();
+  motorDriver.enableStealthChop();
+  motorDriver.setCoolStepDurationThreshold(5000);
+  motorDriver.disable();
+}
+
+void writeMotor(int runCurrent, int microstepsPerStep, int stallThreshold, TMC2209::StandstillMode standstillMode)
+{
+  motorDriver.setRunCurrent(runCurrent);
+  motorDriver.setMicrostepsPerStep(microstepsPerStep);
+  motorDriver.setStallGuardThreshold(stallThreshold);
+  motorDriver.setStandstillMode(standstillMode);
+}
+
+void readMotor()
+{
+  motorDisabled = motorDriver.hardwareDisabled();
+  motorStalled = digitalRead(TMC_OVERCURRENT) == HIGH;
+  motorStallGuard = motorDriver.getStallGuardResult();
+
+  TMC2209::Status status = motorDriver.getStatus();
+  motorOverTemp = status.over_temperature_warning;
+  motorOverTempShutdown = status.over_temperature_shutdown;
+}
+
+void writeVoltage(PD_VOLTAGE voltage)
 {
   //      | 5V   9V   12V   15V   20V
   // -----+---------------------------
@@ -369,105 +465,63 @@ void writeVoltage(VOLTAGE voltage)
   {
     case 5V:
       {
-        digitalWrite(CFG1, HIGH);
+        digitalWrite(PD_CFG1, HIGH);
       }
       break;
     case 9V
       {
-        digitalWrite(CFG1, LOW);
-        digitalWrite(CFG2, LOW);
-        digitalWrite(CFG3, LOW);
+        digitalWrite(PD_CFG1, LOW);
+        digitalWrite(PD_CFG2, LOW);
+        digitalWrite(PD_CFG3, LOW);
       }
       break;
     case 12V
       {
-        digitalWrite(CFG1, LOW);
-        digitalWrite(CFG2, LOW);
-        digitalWrite(CFG3, HIGH);
+        digitalWrite(PD_CFG1, LOW);
+        digitalWrite(PD_CFG2, LOW);
+        digitalWrite(PD_CFG3, HIGH);
       }
       break;
     case 15V
       {
-        digitalWrite(CFG1, LOW);
-        digitalWrite(CFG2, HIGH)
-        digitalWrite(CFG3, HIGH);
+        digitalWrite(PD_CFG1, LOW);
+        digitalWrite(PD_CFG2, HIGH)
+        digitalWrite(PD_CFG3, HIGH);
       }
       break;
     case 20V
       {
-        digitalWrite(CFG1, LOW);
-        digitalWrite(CFG2, HIGH)
-        digitalWrite(CFG3, LOW);
+        digitalWrite(PD_CFG1, LOW);
+        digitalWrite(PD_CFG2, HIGH)
+        digitalWrite(PD_CFG3, LOW);
       }
       break;
   }
 }
 
-void writeMotorDriver()
+void initEncoder()
 {
-  stepperDriver.setRunCurrent(current.toInt());
-  stepperDriver.setMicrostepsPerStep(microsteps.toInt());
-  stepperDriver.setStallGuardThreshold(stallThreshold.toInt());
-
-  if (standstillMode == "NORMAL")
-  {
-    stepperDriver.setStandstillMode(stepperDriver.NORMAL);
-  }
-  else if (standstillMode == "FREEWHEELING")
-  {
-    stepperDriver.setStandstillMode(stepperDriver.FREEWHEELING);
-  }
-  else if (standstillMode == "BRAKING")
-  {
-    stepperDriver.setStandstillMode(stepperDriver.BRAKING);
-  }
-  else if (standstillMode == "STRONG_BRAKING")
-  {
-    stepperDriver.setStandstillMode(stepperDriver.STRONG_BRAKING);
-  }
+  Wire.begin(SDA, SCL);
 }
 
-float readEncoder()
+void readEncoder()
 {
-  int count = 0;
-
   // Request raw angle
   Wire.beginTransmission(AS5600_ADDRESS);
   Wire.write(AS5600_ANGLE_REGISTER);
   Wire.endTransmission(false);
 
   // Read raw angle
+  int angle = 0;
   Wire.requestFrom(AS5600_ADDRESS, 2);
 
   if (Wire.available() >= 2)
   {
     // Combine two bytes to get the counts value
-    count = Wire.read() << 8 | Wire.read();
+    angle = Wire.read() << 8 | Wire.read();
   }
 
-  return count / 4096.0;
-}
-
-bool isHardwareDisabled()
-{
-  return stepperDriver.hardwareDisabled();
-}
-
-bool isOverTempWarning()
-{
-  TMC2209::Status status = stepperDriver.getStatus();
-  return status.over_temperature_warning;
-}
-
-bool isOverTempShutdown()
-{
-  TMC2209::Status status = stepperDriver.getStatus();
-  return status.over_temperature_shutdown;
-}
-
-uint32_t getStallGuard()
-{
-  return stepperDriver.getStallGuardResult();
+  position = angle / 4096.0;
 }
 
 void readSettings()
