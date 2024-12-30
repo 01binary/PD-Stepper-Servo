@@ -22,11 +22,10 @@
 
 #include "esp_wifi.h"
 #include "esp_event.h"
+
+// Logging
+
 #include "esp_log.h"
-#include "nvs_flash.h"
-#include "lwip/sockets.h"
-#include "lwip/sys.h"
-#include "lwip/netdb.h"
 
 // TMC2209 Stepper Motor Driver
 
@@ -137,9 +136,9 @@ float Ki = 10;
 float Kd = 10;
 float iMin = -10;
 float iMax = 10;
-float proportionalError;
-float integralError;
-float derivativeError;
+float proportionalError = 0;
+float integralError = 0;
+float derivativeError = 0;
 int buttonVelocity = 100;
 
 // Encoder
@@ -162,7 +161,7 @@ unsigned int motorStallGuard = 0;
 bool powerGood = false;
 float currentVoltage = 0;
 
-// Board
+// Buttons
 
 bool incrementButtonPushed = false;
 bool decrementButtonPushed = false;
@@ -173,7 +172,7 @@ unsigned long lastDebounceTime = 0;
 // Forward Declarations
 //
 
-void initWifi(const char* ssid, const char* password);
+void initWifi();
 void wifiEvent(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data);
 void initPower();
 void readPower();
@@ -214,89 +213,7 @@ void setup()
 
 void loop()
 {
-  int destAddressLen;
-  struct sockaddr_in destAddress;
-  char buffer[128];
-  char address[128];
-
-  int listenSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
-
-  if (listenSocket < 0)
-  {
-    ESP_LOGE(APPNAME, "Unable to create socket: errno %d", errno);
-    vTaskDelete(NULL);
-    return;
-  }
-
-  destAddress.sin_addr.s_addr = htonl(INADDR_ANY);
-  destAddress.sin_family = AF_INET;
-  destAddress.sin_port = htons(port);
-  destAddressLen = sizeof(destAddress);
-
-  if (bind(listenSocket, (struct sockaddr *)&destAddress, sizeof(destAddress)) < 0)
-  {
-    ESP_LOGE(APPNAME, "Socket unable to bind: errno %d", errno);
-    close(listenSocket);
-    vTaskDelete(NULL);
-    return;
-  }
-
-  if (listen(listenSocket, 1) < 0)
-  {
-    ESP_LOGE(APPNAME, "Error occurred during listen: errno %d", errno);
-    close(listenSocket);
-    vTaskDelete(NULL);
-    return;
-  }
-
-  ESP_LOGI(APPNAME, "Socket listening on port %d", port);
-
-  while (1)
-  {
-    struct sockaddr_in6 sourceAddress;
-    socklen_t sourceAddressLen = sizeof(sourceAddress);
-    int socket = accept(listenSocket, (struct sockaddr *)&sourceAddress, &sourceAddressLen);
-
-    if (socket < 0)
-    {
-      ESP_LOGE(APPNAME, "Unable to accept connection: errno %d", errno);
-      break;
-    }
-
-    inet_ntoa_r(
-      ((struct sockaddr_in *)&sourceAddress)->sin_addr.s_addr,
-      address,
-      sizeof(address) - 1);
-
-    ESP_LOGI(APPNAME, "Socket accepted connection from %s", address);
-
-    while (1)
-    {
-      int receivedLen = recv(socket, buffer, sizeof(buffer) - 1, 0);
-
-      if (receivedLen < 0)
-      {
-        ESP_LOGE(APPNAME, "recv failed: errno %d", errno);
-        break;
-      }
-      else if (receivedLen == 0)
-      {
-        ESP_LOGI(APPNAME, "Connection closed");
-        break;
-      }
-      else
-      {
-        buffer[receivedLen] = 0;
-        ESP_LOGI(APPNAME, "Received %d bytes: %s", receivedLen, buffer);
-      }
-    }
-
-    close(socket);
-    ESP_LOGI(APPNAME, "Socket closed");
-  }
-
-  close(listenSocket);
-  vTaskDelete(NULL);
+  // TODO: process commands
 }
 
 //
@@ -336,22 +253,23 @@ void runMotorControl(void *pvParameters)
       continue;
     }
 
-    if (mode == MANUAL)
+    if (incrementButtonPushed)
     {
-      if (incrementButtonPushed)
-      {
-        writeMotorVelocity(buttonVelocity);
-      }
-      else if (decrementButtonPushed)
-      {
-        writeMotorVelocity(-buttonVelocity);
-      }
-      else
-      {
-        writeMotorVelocity(0);
-      }
+      mode = MANUAL;
+      writeMotorVelocity(buttonVelocity);
     }
-    else if (mode == VELOCITY)
+    else if (decrementButtonPushed)
+    {
+      mode = MANUAL;
+      writeMotorVelocity(-buttonVelocity);
+    }
+    else if (resetButtonPushed)
+    {
+      mode = MANUAL;
+      writeMotorVelocity(0);
+    }
+
+    if (mode == VELOCITY)
     {
       writeMotorVelocity(velocityCommand);
     }
@@ -403,7 +321,7 @@ void runMotorControl(void *pvParameters)
 // Helpers
 //
 
-static void initWifi(const char* ssid, const char* password)
+static void initWifi()
 {
   wifiEventGroup = xEventGroupCreate();
 
