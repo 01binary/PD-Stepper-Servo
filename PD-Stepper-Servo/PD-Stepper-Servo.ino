@@ -307,10 +307,11 @@ void runMotorControl(void *pvParameters)
       float derivative = Kd * derivativeError;
 
       // Calculate command
-      float command = proportional + integral + derivative;
-
-      writeMotorVelocity(int(command));
+      velocityCommand = int(proportional + integral + derivative);
+      writeMotorVelocity(velocityCommand);
     }
+
+    writeBoard();
 
     // Sleep
     vTaskDelayUntil(&lastTime, freq);
