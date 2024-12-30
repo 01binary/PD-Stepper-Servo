@@ -159,7 +159,7 @@ unsigned int motorStallGuard = 0;
 // Power Delivery
 
 bool powerGood = false;
-float currentVoltage = 0;
+float reportedVoltage = 0;
 
 // Buttons
 
@@ -384,12 +384,12 @@ void initPower()
   pinMode(PD_CFG2, OUTPUT);
   pinMode(PD_CFG3, OUTPUT);
 
-  writeVoltage(5V);
+  writeVoltage(voltage);
 }
 
 void readPower()
 {
-  currentVoltage = analogRead(PD_VBUS) * (PD_VREF / 4096.0) / PD_DIV;
+  reportedVoltage = analogRead(PD_VBUS) * (PD_VREF / 4096.0) / PD_DIV;
   powerGood = digitalRead(PD_POWERGOOD) == 0;
 }
 
