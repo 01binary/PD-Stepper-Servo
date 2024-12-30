@@ -18,10 +18,15 @@
 #include "freertos/task.h"
 #include "freertos/event_groups.h"
 
-// Networking
+// Wifi
 
 #include "esp_wifi.h"
 #include "esp_event.h"
+
+// Web Server
+
+#include <ESPAsyncWebServer.h> // https://github.com/me-no-dev/ESPAsyncWebServer
+#include <AsyncTCP.h>          // https://github.com/me-no-dev/AsyncTCP
 
 // Logging
 
@@ -29,7 +34,7 @@
 
 // TMC2209 Stepper Motor Driver
 
-#include <TMC2209.h>
+#include <TMC2209.h>           // https://github.com/janelia-arduino/TMC2209/tree/main
 
 // AS5600 Hall Effect Encoder
 
@@ -119,6 +124,7 @@ String ssid = "your-ssid";
 String password = "your-password";
 int port = 8080;
 EventGroupHandle_t wifiEventGroup;
+AsyncWebServer* pServer;
 
 // State
 
@@ -174,6 +180,7 @@ unsigned long lastDebounceTime = 0;
 
 void initWifi();
 void wifiEvent(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data);
+void initServer();
 void initPower();
 void readPower();
 void initBoard();
@@ -195,25 +202,27 @@ void runMotorControl(void *pvParameters);
 
 void setup()
 {
+  // Ensure bootloader finishes
   delay(STARTUP_DELAY_MS);
 
+  // Setup
   readSettings();
-
   initWifi(ssid, password);
   initBoard();
   initPower();
   initMotor();
   initEncoder();
   initMotorControl();
-}
 
-//
-// Non-RT thread
-//
+  // Flash LED after setup complete
+  digitalWrite(LED1, HIGH);
+  delay(STARTUP_DELAY_MS);
+  digitalWrite(LED1, LOW);
+}
 
 void loop()
 {
-  // TODO: process commands
+  // Server runs itself
 }
 
 //
@@ -357,7 +366,7 @@ static void initWifi()
   xEventGroupWaitBits(wifiEventGroup, BIT0, pdFALSE, pdTRUE, portMAX_DELAY);
 }
 
-static void wifiEvent(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
+void wifiEvent(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
 {
   if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START)
   {
@@ -375,6 +384,44 @@ static void wifiEvent(void *arg, esp_event_base_t event_base, int32_t event_id, 
     ESP_LOGI(APPNAME, "Got IP: %s", ip4addr_ntoa(&event->ip_info.ip));
     xEventGroupSetBits(wifiEventGroup, BIT0);
   }
+}
+
+void initServer()
+{
+  pServer = new AsyncWebServer(port);
+
+  pServer->on("/settings", HTTP_GET, [](AsyncWebServerRequest *request) {
+    // TODO: return settings
+    request->send_P(200, "application/json", responseStringTodo);
+  });
+
+  pServer->on("/velocity", HTTP_GET, [](AsyncWebServerRequest *request) {
+    // TODO: velocity feedback
+    request->send_P(200, "application/json", responseStringTodo);
+  });
+
+  pServer->on("/position", HTTP_GET, [](AsyncWebServerRequest *request) {
+    // TODO: position feedback
+    request->send_P(200, "application/json", responseStringTodo);
+  });
+
+  pServer->on("/settings", HTTP_POST, [](AsyncWebServerRequest *request) {
+    // TODO: change and save settings, reinit
+  });
+
+  pServer->on("/enabled", HTTP_POST, [](AsyncWebServerRequest *request) {
+    // TODO: enabled command
+  });
+
+  pServer->on("/position", HTTP_POST, [](AsyncWebServerRequest *request) {
+    // TODO: position command
+  });
+
+  pServer->on("/velocity", HTTP_POST, [](AsyncWebServerRequest *request) {
+    // TODO: velocity command
+  });
+
+  pServer->begin();
 }
 
 void initPower()
