@@ -44,16 +44,21 @@
 // Constants
 //
 
-// Wifi
-
-const char* WIFI_SSID = "your-ssid";         // TODO: move to flash
-const char* WIFI_PASSWORD = "your-password"; // TODO: move to flash
-const int PORT = 8080;                       // TODO: move to flash
-
 // Controller
 
+const char* APPNAME = "PDStepperServo";
 const int RATE_HZ = 50;
 const int TIMESTEP_MS = 1000 / RATE_HZ;
+const float TIMESTEP = 1.0 / RATE_HZ;
+const int DEBOUNCE_MS = 50;
+const int STARTUP_DELAY_MS = 200;
+
+enum MODE
+{
+  POSITION,
+  VELOCITY,
+  MANUAL
+}
 
 // Encoder
 
@@ -64,7 +69,6 @@ const float AS5600_MAX = 4096;
 // Stepper driver
 
 const long TMC_SERIAL_BAUD_RATE = 115200;
-const uint8_t TMC_RUN_CURRENT_PERCENT = 100;
 const int TMC_ENABLED = 21;
 const int TMC_STEP = 5;
 const int TMC_DIR = 6;
@@ -79,13 +83,14 @@ const int TMC_INDEX = 11;
 // USB Power Delivery
 
 const int PD_POWERGOOD = 15;
+const int PD_VBUS = 4;
 const int PD_CFG1 = 38;
 const int PD_CFG2 = 48;
 const int PD_CFG3 = 47;
 const float PD_VREF = 3.3;
 const float PD_DIV = 0.1189427313;
 
-enum PD_VOLTAGE
+enum VOLTAGE
 {
   5V = 5,
   9V = 9,
@@ -96,7 +101,6 @@ enum PD_VOLTAGE
 
 // PD Stepper Board
 
-const int BRD_VBUS = 4;
 const int BRD_NTC = 7;
 const int BRD_LED1 = 10;
 const int BRD_LED2 = 12;
@@ -105,7 +109,6 @@ const int BRD_SW2 = 36;
 const int BRD_SW3 = 37;
 const int BRD_AUX1 = 14;
 const int BRD_AUX2 = 13;
-const unsigned long DEBOUNCE = 50;
 
 //
 // Variables
@@ -113,13 +116,31 @@ const unsigned long DEBOUNCE = 50;
 
 // Wifi
 
-static EventGroupHandle_t wifiEventGroup;
+String ssid = "your-ssid";
+String password = "your-password";
+int port = 8080;
+EventGroupHandle_t wifiEventGroup;
 
 // State
 
 bool enabled = 0;
+VOLTAGE voltage = 5V;
+int current = 100;
+int microsteps = 32;
+int stallThreshold = 10;
+TMC2209::StandstillMode standstillMode = NORMAL;
+MODE mode = MANUAL;
 int velocityCommand = 0;
-signed long positionCommand = 0;
+float positionCommand = 0;
+float Kp = 100;
+float Ki = 10;
+float Kd = 10;
+float iMin = -10;
+float iMax = 10;
+float proportionalError;
+float integralError;
+float derivativeError;
+int buttonVelocity = 100;
 
 // Encoder
 
@@ -130,7 +151,7 @@ float position = 0.0;
 TMC2209 motorDriver;
 HardwareSerial &motorSerial = Serial2;
 bool motorState = false;
-bool motorDisabled = true;
+bool motorEnabled = true;
 bool motorOverTemp = false;
 bool motorOverTempShutdown = false;
 bool motorStalled = false;
@@ -139,14 +160,13 @@ unsigned int motorStallGuard = 0;
 // Power Delivery
 
 bool powerGood = false;
-float voltage = 0;
+float currentVoltage = 0;
 
 // Board
 
 bool incrementButtonPushed = false;
 bool decrementButtonPushed = false;
 bool resetButtonPushed = false;
-int buttonVelocity = 100;
 unsigned long lastDebounceTime = 0;
 
 //
@@ -154,7 +174,7 @@ unsigned long lastDebounceTime = 0;
 //
 
 void initWifi(const char* ssid, const char* password);
-void wifiEventHandler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data);
+void wifiEvent(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data);
 void initPower();
 void readPower();
 void initBoard();
@@ -164,7 +184,9 @@ void initEncoder();
 void readEncoder();
 void initMotor();
 void readMotor();
-void writeMotor(int runCurrent, int microstepsPerStep, int stallThreshold, TMC2209::StandstillMode standstillMode);
+void writeMotorEnabled(bool enabled);
+void writeMotorVelocity(int velocity);
+void writeMotorStepDirection(bool step, bool direction);
 void initMotorControl();
 void runMotorControl(void *pvParameters);
 
@@ -174,10 +196,11 @@ void runMotorControl(void *pvParameters);
 
 void setup()
 {
-  // Ensure bootloader mode entered correctly
-  delay(200);
+  delay(STARTUP_DELAY_MS);
 
-  initWifi(WIFI_SSID, WIFI_PASSWORD);
+  readSettings();
+
+  initWifi(ssid, password);
   initBoard();
   initPower();
   initMotor();
@@ -207,7 +230,7 @@ void loop()
 
   destAddress.sin_addr.s_addr = htonl(INADDR_ANY);
   destAddress.sin_family = AF_INET;
-  destAddress.sin_port = htons(PORT);
+  destAddress.sin_port = htons(port);
   destAddressLen = sizeof(destAddress);
 
   if (bind(listenSocket, (struct sockaddr *)&destAddress, sizeof(destAddress)) < 0)
@@ -226,7 +249,7 @@ void loop()
     return;
   }
 
-  ESP_LOGI(APPNAME, "Socket listening on port %d", PORT);
+  ESP_LOGI(APPNAME, "Socket listening on port %d", port);
 
   while (1)
   {
@@ -282,7 +305,6 @@ void loop()
 
 void initMotorControl()
 {
-  // Start real-time motor controller
   xTaskCreate(runMotorControl, "MotorControl", 2048, NULL, configMAX_PRIORITIES - 1, NULL);
 }
 
@@ -296,14 +318,80 @@ void runMotorControl(void *pvParameters)
     readEncoder();
     readMotor();
     readPower();
+    readBoard();
 
-    if (powerGood && enabled && motorDisabled)
+    if (!powerGood && motorEnabled)
     {
-      motorDriver.enable();
+      writeMotorEnabled(false);
+      continue;
     }
-    else if (!powerGood || (!enabled && !motorDisabled))
+
+    if (enabled != motorEnabled)
     {
-      motorDriver.disable();
+      writeMotorEnabled(enabled);
+    }
+
+    if (!enabled)
+    {
+      continue;
+    }
+
+    if (mode == MANUAL)
+    {
+      if (incrementButtonPushed)
+      {
+        writeMotorVelocity(buttonVelocity);
+      }
+      else if (decrementButtonPushed)
+      {
+        writeMotorVelocity(-buttonVelocity);
+      }
+      else
+      {
+        writeMotorVelocity(0);
+      }
+    }
+    else if (mode == VELOCITY)
+    {
+      writeMotorVelocity(velocityCommand);
+    }
+    else if (mode == POSITION)
+    {
+      // Calculate proportional error
+      float error = positionCommand - position;
+
+      // Calculate integral error
+      integralError += TIMESTEP * error;
+
+      bool limitIntegralError = Ki > 0 && (iMin < 0 || iMax > 0);
+
+      if (limitIntegralError)
+      {
+        integralError = constrain(integralError, iMin / Ki, iMax / Ki);
+      }
+
+      // Calculate derivative error
+      derivativeError = (error - proportionalError) / TIMESTEP;
+      proportionalError = error;
+
+      // Calculate proportional contribution
+      float proportional = Kp * proportionalError;
+
+      // Calculate integral contribution
+      float integral = Ki * integralError;
+
+      if (limitIntegralError)
+      {
+        integral = constrain(integral, iMin, iMax);
+      }
+
+      // Calculate derivative contribution
+      float derivative = Kd * derivativeError;
+
+      // Calculate command
+      float command = proportional + integral + derivative;
+
+      writeMotorVelocity(int(command));
     }
 
     // Sleep
@@ -330,9 +418,9 @@ static void initWifi(const char* ssid, const char* password)
   esp_event_handler_instance_t instance_got_ip;
 
   esp_event_handler_instance_register(
-    WIFI_EVENT, ESP_EVENT_ANY_ID, &wifiEventHandler, NULL, &instance_any_id);
+    WIFI_EVENT, ESP_EVENT_ANY_ID, &wifiEvent, NULL, &instance_any_id);
   esp_event_handler_instance_register(
-    IP_EVENT, IP_EVENT_STA_GOT_IP, &wifiEventHandler, NULL, &instance_got_ip);
+    IP_EVENT, IP_EVENT_STA_GOT_IP, &wifiEvent, NULL, &instance_got_ip);
 
   wifi_config_t wifi_config =
   {
@@ -350,7 +438,7 @@ static void initWifi(const char* ssid, const char* password)
   xEventGroupWaitBits(wifiEventGroup, BIT0, pdFALSE, pdTRUE, portMAX_DELAY);
 }
 
-static void wifiEventHandler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
+static void wifiEvent(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
 {
   if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START)
   {
@@ -382,9 +470,7 @@ void initPower()
 
 void readPower()
 {
-  int adc = analogRead(VBUS);
-  voltage = adc * (PD_VREF / 4096.0) / PD_DIV;
-
+  currentVoltage = analogRead(PD_VBUS) * (PD_VREF / 4096.0) / PD_DIV;
   powerGood = digitalRead(PD_POWERGOOD) == 0;
 }
 
@@ -399,12 +485,12 @@ void initBoard()
 
 void readBoard()
 {
-  if ((millis() - lastDebounceTime) > DEBOUNCE)
+  if ((millis() - lastDebounceTime) > DEBOUNCE_MS)
   {
     lastDebounceTime = millis();
-    incrementButtonPushed = digitalRead(SW3) == HIGH ? false : true;
-    decrementButtonPushed = digitalRead(SW1) == HIGH ? false : true;
-    resetButtonPushed = digitalRead(SW2) == HIGH ? false : true;
+    incrementButtonPushed = digitalRead(BRD_SW3) == HIGH ? false : true;
+    decrementButtonPushed = digitalRead(BRD_SW1) == HIGH ? false : true;
+    resetButtonPushed = digitalRead(BRD_SW2) == HIGH ? false : true;
   }
 }
 
@@ -426,25 +512,45 @@ void initMotor()
   digitalWrite(TMC_MS1, LOW);
   digitalWrite(TMC_MS2, LOW);
 
-  motorDriver.setup(motorSerial, SERIAL_BAUD_RATE, TMC2209::SERIAL_ADDRESS_0, TMC_RX, TMC_TX);
-  motorDriver.setRunCurrent(RUN_CURRENT_PERCENT);
+  motorDriver.setup(motorSerial, TMC_SERIAL_BAUD_RATE, TMC2209::SERIAL_ADDRESS_0, TMC_RX, TMC_TX);
   motorDriver.enableAutomaticCurrentScaling();
+  motorDriver.setRunCurrent(current);
+  motorDriver.setMicrostepsPerStep(microsteps);
+  motorDriver.setStallGuardThreshold(stallThreshold);
+  motorDriver.setStandstillMode(standstillMode);
   motorDriver.enableStealthChop();
   motorDriver.setCoolStepDurationThreshold(5000);
   motorDriver.disable();
 }
 
-void writeMotor(int runCurrent, int microstepsPerStep, int stallThreshold, TMC2209::StandstillMode standstillMode)
+void writeMotorEnabled(bool enabled)
 {
-  motorDriver.setRunCurrent(runCurrent);
-  motorDriver.setMicrostepsPerStep(microstepsPerStep);
-  motorDriver.setStallGuardThreshold(stallThreshold);
-  motorDriver.setStandstillMode(standstillMode);
+  if (enabled)
+  {
+    motorDriver.enable();
+  }
+  else
+  {
+    motorDriver.disable();
+  }
+}
+
+void writeMotorVelocity(int velocity)
+{
+  motorDriver.moveAtVelocity(velocity);
+}
+
+void writeMotorStepDirection(bool direction)
+{
+  digitalWrite(TMC_DIR, direction ? HIGH : LOW);
+  digitalWrite(TMC_STEP, motorState ? HIGH : LOW);
+
+  motorState = !motorState;
 }
 
 void readMotor()
 {
-  motorDisabled = motorDriver.hardwareDisabled();
+  motorEnabled = !motorDriver.hardwareDisabled();
   motorStalled = digitalRead(TMC_OVERCURRENT) == HIGH;
   motorStallGuard = motorDriver.getStallGuardResult();
 
@@ -453,7 +559,7 @@ void readMotor()
   motorOverTempShutdown = status.over_temperature_shutdown;
 }
 
-void writeVoltage(PD_VOLTAGE voltage)
+void writeVoltage(VOLTAGE voltage)
 {
   //      | 5V   9V   12V   15V   20V
   // -----+---------------------------
@@ -521,49 +627,45 @@ void readEncoder()
     angle = Wire.read() << 8 | Wire.read();
   }
 
-  position = angle / 4096.0;
+  position = angle / AS5600_MAX;
 }
 
 void readSettings()
-{ 
+{
   preferences.begin("settings", false);
-
-  enabled1 = preferences.getString("enable", ""); 
-  
-  if (enabled1 == "")
-  {
-    //EEPROM has not been saved to before so save defaults
-    preferences.end(); //close to write EEPROM can open again
-    enabled1 = "enabled";
-    setVoltage = "12";
-    microsteps = "32";
-    current = "30";
-    stallThreshold = "10";
-    standstillMode = "NORMAL";
-    writeSettings();
-  }
-  else
-  {
-    Serial.println("Settings found in EEPROM");
-    setVoltage = preferences.getString("voltage", ""); 
-    microsteps = preferences.getString("microsteps", ""); 
-    current = preferences.getString("current", ""); 
-    stallThreshold = preferences.getString("stallThreshold", ""); 
-    standstillMode = preferences.getString("standstillMode", ""); 
-    preferences.end();
-  }
+  ssid = preferences.getString("ssid", ssid);
+  password = preferences.getString("password", password);
+  port = preferences.getInt("port", port);
+  voltage = (VOLTAGE)preferences.getInt("voltage", voltage);
+  current = preferences.getInt("current", current);
+  microsteps = preferences.getInt("microsteps", microsteps);
+  stallThreshold = preferences.getInt("stallThreshold", stallThreshold);
+  standstillMode = (TMC2209::StandstillMode)preferences.getInt("standstillMode", (int)standstillMode);
+  Kp = preferences.getFloat("Kp", Kp);
+  Ki = preferences.getFloat("Ki", Ki);
+  Kd = preferences.getFloat("Id", Kd);
+  iMin = preferences.getFloat("iMin", iMin);
+  iMax = preferences.getFloat("iMax", iMax);
+  buttonVelocity = preferences.getInt("buttonVelocity", buttonVelocity);
+  preferences.end();
 }
 
 void writeSettings()
 {
   preferences.begin("settings", false);
-  preferences.putString("enable", enabled1); 
-  preferences.putString("voltage", setVoltage); 
-  preferences.putString("microsteps", microsteps); 
-  preferences.putString("current", current); 
-  preferences.putString("stallThreshold", stallThreshold); 
-  preferences.putString("standstillMode", standstillMode); 
+  preferences.putString("ssid", ssid);
+  preferences.putString("password", password);
+  preferences.putInt("port", port);
+  preferences.putInt("voltage", (int)voltage);
+  preferences.putInt("current", current);
+  preferences.putInt("microsteps", microsteps);
+  preferences.putInt("stallThreshold", stallThreshold);
+  preferences.putInt("standstillMode", (int)standstillMode);
+  preferences.putFloat("Kp", Kp);
+  preferences.putFloat("Ki", Ki);
+  preferences.putFloat("Id", Kd);
+  preferences.putFloat("iMin", iMin);
+  preferences.putFloat("iMax", iMax);
+  preferences.putInt("buttonVelocity", buttonVelocity);
   preferences.end();
-  
-  configureSettings();
 }
