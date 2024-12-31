@@ -606,12 +606,6 @@ void settingsCommand(const Settings& settings)
 {
   writeMotorVelocity(0);
 
-  if (enabled != settings.enabled)
-  {
-    enabled = settings.enabled;
-    writeMotorEnabled(enabled);
-  }
-
   if (voltage != settings.voltage)
   {
     voltage = settings.voltage;
@@ -690,7 +684,6 @@ void velocityFeedback(int& velocity)
 
 void settingsFeedback(Settings& settings)
 {
-  settings.enabled = enabled;
   settings.voltage = voltage;
   settings.current = current;
   settings.microsteps = microsteps;

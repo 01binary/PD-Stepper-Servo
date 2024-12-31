@@ -93,7 +93,6 @@ void useRestInterface(
     settingsFeedback(settings);
 
     JsonDocument doc;
-    doc["enabled"] = settings.enabled;
     doc["voltage"] = settings.voltage;
     doc["current"] = settings.current;
     doc["microsteps"] = settings.microsteps;
@@ -187,7 +186,6 @@ void useRestInterface(
     deserializeJsonBody(request, [](JsonDocument& doc)
     {
       Settings settings;
-      settings.enabled = doc["enabled"].as<bool>();
       settings.voltage = doc["voltage"].as<int>();
       settings.current = doc["current"].as<int>();
       settings.microsteps = doc["microsteps"].as<int>();

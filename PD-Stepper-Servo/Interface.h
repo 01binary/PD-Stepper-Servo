@@ -57,7 +57,6 @@ struct PositionFeedback
 
 struct Settings
 {
-  bool enabled;
   int voltage;
   int current;
   int microsteps;
