@@ -1,3 +1,9 @@
+/*
+* PD Stepper Servo Controller
+* Switchable Control Interface
+* Copyright (C) 2025 Ctrl^H Hackerspace
+*/
+
 #pragma once
 
 //
@@ -59,7 +65,7 @@ struct PositionFeedback
 
 struct Settings
 {
-  int voltage;
+  VOLTAGE voltage;
   int current;
   int microsteps;
   int stallThreshold;

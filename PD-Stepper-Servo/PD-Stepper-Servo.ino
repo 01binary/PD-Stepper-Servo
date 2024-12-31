@@ -108,7 +108,8 @@ unsigned long lastDebounceTime = 0;
 
 // Configuration
 
-VOLTAGE voltage = 5V;
+Preferences preferences;
+VOLTAGE voltage = VOLTAGE_5V;
 int current = 100;
 int microsteps = 32;
 int stallThreshold = 10;
@@ -178,23 +179,7 @@ void velocityFeedback(int& velocity);
 void settingsFeedback(Settings& settings);
 
 //
-// Interface
-//
-
-useRestInterface(
-  "ssid", "password", 8080,
-  enabledCommand,
-  positionCommand,
-  velocityCommand,
-  settingsCommand,
-  statusFeedback,
-  positionFeedback,
-  velocityFeedback,
-  settingsFeedback
-);
-
-//
-// Entry point
+// Functions
 //
 
 void setup()
@@ -209,15 +194,23 @@ void setup()
   initEncoder();
   initMotorControl();
   initBoard();
+
+  useRestInterface(
+    "ssid", "password", 8080,
+    enabledCommand,
+    positionCommand,
+    velocityCommand,
+    settingsCommand,
+    statusFeedback,
+    positionFeedback,
+    velocityFeedback,
+    settingsFeedback
+  );
 }
 
 void loop()
 {
 }
-
-//
-// RT thread
-//
 
 void initMotorControl()
 {
@@ -370,9 +363,9 @@ void initBoard()
   pinMode(BRD_LED2, OUTPUT);
 
   // Flash LED after setup complete
-  digitalWrite(LED1, HIGH);
+  digitalWrite(BRD_LED1, HIGH);
   delay(STARTUP_DELAY_MS);
-  digitalWrite(LED1, LOW);
+  digitalWrite(BRD_LED1, LOW);
 }
 
 void readBoard()
@@ -409,7 +402,7 @@ void initMotor()
   motorDriver.setRunCurrent(current);
   motorDriver.setMicrostepsPerStep(microsteps);
   motorDriver.setStallGuardThreshold(stallThreshold);
-  motorDriver.setStandstillMode(standstillMode);
+  motorDriver.setStandstillMode((TMC2209::StandstillMode)standstillMode);
   motorDriver.enableStealthChop();
   motorDriver.setCoolStepDurationThreshold(5000);
   motorDriver.disable();
@@ -461,36 +454,36 @@ void writeVoltage(VOLTAGE voltage)
 
   switch (voltage)
   {
-    case 5V:
+    case VOLTAGE_5V:
       {
         digitalWrite(PD_CFG1, HIGH);
       }
       break;
-    case 9V:
+    case VOLTAGE_9V:
       {
         digitalWrite(PD_CFG1, LOW);
         digitalWrite(PD_CFG2, LOW);
         digitalWrite(PD_CFG3, LOW);
       }
       break;
-    case 12V:
+    case VOLTAGE_12V:
       {
         digitalWrite(PD_CFG1, LOW);
         digitalWrite(PD_CFG2, LOW);
         digitalWrite(PD_CFG3, HIGH);
       }
       break;
-    case 15V:
+    case VOLTAGE_15V:
       {
         digitalWrite(PD_CFG1, LOW);
-        digitalWrite(PD_CFG2, HIGH)
+        digitalWrite(PD_CFG2, HIGH);
         digitalWrite(PD_CFG3, HIGH);
       }
       break;
-    case 20V:
+    case VOLTAGE_20V:
       {
         digitalWrite(PD_CFG1, LOW);
-        digitalWrite(PD_CFG2, HIGH)
+        digitalWrite(PD_CFG2, HIGH);
         digitalWrite(PD_CFG3, LOW);
       }
       break;
@@ -633,7 +626,7 @@ void settingsCommand(const Settings& settings)
   if (standstillMode != settings.standstillMode)
   {
     standstillMode = settings.standstillMode;
-    motorDriver.setStandstillMode(standstillMode);
+    motorDriver.setStandstillMode((TMC2209::StandstillMode)standstillMode);
   }
 
   buttonVelocity = settings.buttonVelocity;
@@ -668,13 +661,13 @@ void statusFeedback(Status& status)
   status.stalled = motorStalled;
 }
 
-void positionFeedback(PositionFeedback& position)
+void positionFeedback(PositionFeedback& feedback)
 {
-  position.goal = commandedPosition;
-  position.position = position;
-  position.error = proportionalError;
-  position.integralError = integralError;
-  position.derivativeError = derivativeError;
+  feedback.goal = commandedPosition;
+  feedback.position = position;
+  feedback.error = proportionalError;
+  feedback.integralError = integralError;
+  feedback.derivativeError = derivativeError;
 }
 
 void velocityFeedback(int& velocity)

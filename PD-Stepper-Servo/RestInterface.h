@@ -4,6 +4,8 @@
 * Copyright (C) 2025 Ctrl^H Hackerspace
 */
 
+#pragma once
+
 //
 // Includes
 //
@@ -24,7 +26,15 @@
 AsyncWebServer* pServer = NULL;
 
 //
-// REST API interface
+// Forward Declarations
+//
+
+void deserializeJsonBody(
+  AsyncWebServerRequest *request,
+  const std::function <void (JsonDocument&)>& callback);
+
+//
+// Functions
 //
 
 void useRestInterface(
@@ -83,7 +93,7 @@ void useRestInterface(
     String res;
     serializeJson(doc, res);
 
-    request->send_P(200, "application/json", res);
+    request->send_P(200, "application/json", res.c_str());
   });
 
   // Settings feedback
@@ -113,7 +123,7 @@ void useRestInterface(
     String res;
     serializeJson(doc, res);
 
-    request->send_P(200, "application/json", res);
+    request->send_P(200, "application/json", res.c_str());
   });
 
   // Velocity feedback
@@ -128,7 +138,7 @@ void useRestInterface(
     String res;
     serializeJson(doc, res);
 
-    request->send_P(200, "application/json", res);
+    request->send_P(200, "application/json", res.c_str());
   });
 
   // Position feedback
@@ -147,13 +157,13 @@ void useRestInterface(
     String res;
     serializeJson(doc, res);
 
-    request->send_P(200, "application/json", res);
+    request->send_P(200, "application/json", res.c_str());
   });
 
   // Enable command
   pServer->on("/enable", HTTP_POST, [enableCommand](AsyncWebServerRequest *request)
   {
-    deserializeJsonBody(request, [enableCommand](JsonDocument& doc)
+    deserializeJsonBody(request, [enableCommand, request](JsonDocument& doc)
     {
       enableCommand(doc["enabled"].as<bool>());
       request->send(200);
@@ -163,7 +173,7 @@ void useRestInterface(
   // Position command
   pServer->on("/position", HTTP_POST, [positionCommand](AsyncWebServerRequest *request)
   {
-    deserializeJsonBody(request, [positionCommand](JsonDocument& doc)
+    deserializeJsonBody(request, [positionCommand, request](JsonDocument& doc)
     {
       positionCommand(doc["position"].as<float>());
       request->send(200);
@@ -173,7 +183,7 @@ void useRestInterface(
   // Velocity command
   pServer->on("/velocity", HTTP_POST, [velocityCommand](AsyncWebServerRequest *request)
   {
-    deserializeJsonBody(request, [velocityCommand](JsonDocument& doc)
+    deserializeJsonBody(request, [velocityCommand, request](JsonDocument& doc)
     {
       velocityCommand(doc["velocity"].as<int>());
       request->send(200);
@@ -183,10 +193,10 @@ void useRestInterface(
   // Settings command
   pServer->on("/settings", HTTP_POST, [settingsCommand](AsyncWebServerRequest *request)
   {
-    deserializeJsonBody(request, [settingsCommand](JsonDocument& doc)
+    deserializeJsonBody(request, [settingsCommand, request](JsonDocument& doc)
     {
       Settings settings;
-      settings.voltage = doc["voltage"].as<int>();
+      settings.voltage = (VOLTAGE)doc["voltage"].as<int>();
       settings.current = doc["current"].as<int>();
       settings.microsteps = doc["microsteps"].as<int>();
       settings.stallThreshold = doc["stallThreshold"].as<int>();
@@ -216,24 +226,12 @@ void deserializeJsonBody(
   AsyncWebServerRequest *request,
   const std::function <void (JsonDocument&)>& callback)
 {
-  size_t totalLen = request->contentLength();
-  char *buffer = new char[totalLen + 1];
-
-  request->onBody([&](uint8_t *data, size_t len, size_t index, size_t total)
+  if (request->hasParam("body", true))
   {
-    if (index + len <= totalLen)
-    {
-      memcpy(buffer + index, data, len);
-    }
+    JsonDocument doc;
+    String json = request->getParam("body", true)->value();
 
-    if (index + len == total)
-    {
-      buffer[totalLen] = '\0';
-
-      JsonDocument doc;
-      deserializeJson(doc, buffer);
-
-      callback(doc);
-    }
-  });
+    deserializeJson(doc, json);
+    callback(doc);
+  }
 }
