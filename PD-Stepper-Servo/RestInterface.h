@@ -64,7 +64,7 @@ void useRestInterface(
   pServer = new AsyncWebServer(port);
 
   // Status feedback
-  pServer->on("/status", HTTP_GET, [](AsyncWebServerRequest *request)
+  pServer->on("/status", HTTP_GET, [statusFeedback](AsyncWebServerRequest *request)
   {
     Status status;
     statusFeedback(status);
@@ -87,7 +87,7 @@ void useRestInterface(
   });
 
   // Settings feedback
-  pServer->on("/settings", HTTP_GET, [](AsyncWebServerRequest *request)
+  pServer->on("/settings", HTTP_GET, [settingsFeedback](AsyncWebServerRequest *request)
   {
     Settings settings;
     settingsFeedback(settings);
@@ -117,7 +117,7 @@ void useRestInterface(
   });
 
   // Velocity feedback
-  pServer->on("/velocity", HTTP_GET, [](AsyncWebServerRequest *request)
+  pServer->on("/velocity", HTTP_GET, [velocityFeedback](AsyncWebServerRequest *request)
   {
     int velocity;
     velocityFeedback(velocity);
@@ -132,7 +132,7 @@ void useRestInterface(
   });
 
   // Position feedback
-  pServer->on("/position", HTTP_GET, [](AsyncWebServerRequest *request)
+  pServer->on("/position", HTTP_GET, [positionFeedback](AsyncWebServerRequest *request)
   {
     PositionFeedback feedback;
     positionFeedback(feedback);
@@ -151,9 +151,9 @@ void useRestInterface(
   });
 
   // Enable command
-  pServer->on("/enable", HTTP_POST, [](AsyncWebServerRequest *request)
+  pServer->on("/enable", HTTP_POST, [enableCommand](AsyncWebServerRequest *request)
   {
-    deserializeJsonBody(request, [](JsonDocument& doc)
+    deserializeJsonBody(request, [enableCommand](JsonDocument& doc)
     {
       enableCommand(doc["enabled"].as<bool>());
       request->send(200);
@@ -161,9 +161,9 @@ void useRestInterface(
   });
 
   // Position command
-  pServer->on("/position", HTTP_POST, [](AsyncWebServerRequest *request)
+  pServer->on("/position", HTTP_POST, [positionCommand](AsyncWebServerRequest *request)
   {
-    deserializeJsonBody(request, [](JsonDocument& doc)
+    deserializeJsonBody(request, [positionCommand](JsonDocument& doc)
     {
       positionCommand(doc["position"].as<float>());
       request->send(200);
@@ -171,9 +171,9 @@ void useRestInterface(
   });
 
   // Velocity command
-  pServer->on("/velocity", HTTP_POST, [](AsyncWebServerRequest *request)
+  pServer->on("/velocity", HTTP_POST, [velocityCommand](AsyncWebServerRequest *request)
   {
-    deserializeJsonBody(request, [](JsonDocument& doc)
+    deserializeJsonBody(request, [velocityCommand](JsonDocument& doc)
     {
       velocityCommand(doc["velocity"].as<int>());
       request->send(200);
@@ -181,9 +181,9 @@ void useRestInterface(
   });
 
   // Settings command
-  pServer->on("/settings", HTTP_POST, [](AsyncWebServerRequest *request)
+  pServer->on("/settings", HTTP_POST, [settingsCommand](AsyncWebServerRequest *request)
   {
-    deserializeJsonBody(request, [](JsonDocument& doc)
+    deserializeJsonBody(request, [settingsCommand](JsonDocument& doc)
     {
       Settings settings;
       settings.voltage = doc["voltage"].as<int>();

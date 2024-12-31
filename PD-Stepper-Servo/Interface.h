@@ -1,3 +1,5 @@
+#pragma once
+
 //
 // Constants
 //
@@ -83,7 +85,7 @@ struct Settings
 // Types
 //
 
-typedef void (*EnabledCommandPtr)(bool);
+typedef void (*EnableCommandPtr)(bool);
 typedef void (*PositionCommandPtr)(float);
 typedef void (*VelocityCommandPtr)(int);
 typedef void (*SettingsCommandPtr)(const Settings&);
