@@ -276,6 +276,18 @@ void runMotorControl(void *pvParameters)
       // Calculate proportional error
       float error = commandedPosition - position;
 
+      // Stop if within tolerance
+      if (error <= tolerance)
+      {
+        if (commandedVelocity != 0)
+        {
+          commandedVelocity = 0;
+          writeMotorVelocity(0);
+        }
+
+        continue;
+      }
+
       // Calculate integral error
       integralError += TIMESTEP * error;
 
