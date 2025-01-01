@@ -7,11 +7,6 @@
 // Includes
 //
 
-// Standard library
-
-#include <stdio.h>
-#include <string.h>
-
 // Multi-threading
 
 #include "freertos/FreeRTOS.h"
@@ -67,6 +62,13 @@ const int TMC_RX = 18;
 const int TMC_OVERCURRENT = 16;
 const int TMC_INDEX = 11;
 
+const char* const TMC_STANDSTILL[] = {
+  "normal",
+  "freewheeling",
+  "strong braking",
+  "braking"
+};
+
 // USB Power Delivery
 
 const int PD_POWERGOOD = 15;
@@ -109,6 +111,7 @@ unsigned long lastDebounceTime = 0;
 // Configuration
 
 Preferences preferences;
+String name = "PD-Stepper";
 VOLTAGE voltage = VOLTAGE_5V;
 int current = 100;
 int microsteps = 32;
@@ -126,7 +129,7 @@ int buttonVelocity = 100;
 
 // Encoder
 
-int rawPosition = 0;
+int rawPosition = -1;
 int revolutions = 0;
 int rawPositionWithRevolutions = 0;
 int encoderMin = 0;
@@ -155,6 +158,7 @@ float busVoltage = 0;
 // Forward Declarations
 //
 
+void initSerial();
 void initPower();
 void readPower();
 void initBoard();
@@ -184,8 +188,7 @@ void settingsFeedback(Settings& settings);
 
 void setup()
 {
-  delay(STARTUP_DELAY_MS);
-  Serial.begin(115200);
+  initSerial(115200);
 
   readSettings();
 
@@ -196,7 +199,9 @@ void setup()
   initBoard();
 
   useRestInterface(
-    "ssid", "password", 8080,
+    "TEST",
+    "TESTING",
+    8080,
     enabledCommand,
     positionCommand,
     velocityCommand,
@@ -350,14 +355,31 @@ void runMotorControl(void *pvParameters)
 // Helpers
 //
 
+void initSerial(int speed)
+{
+  delay(STARTUP_DELAY_MS);
+
+  Serial.begin(speed);
+
+  while(!Serial);
+  
+  Serial.println("initialized serial");
+}
+
 void initPower()
 {
+  Serial.println("initializing power delivery");
+
   pinMode(PD_POWERGOOD, INPUT);
   pinMode(PD_CFG1, OUTPUT);
   pinMode(PD_CFG2, OUTPUT);
   pinMode(PD_CFG3, OUTPUT);
 
   writeVoltage(voltage);
+
+  Serial.print("power initialized to ");
+  Serial.print(voltage);
+  Serial.println("V");
 }
 
 void readPower()
@@ -368,6 +390,8 @@ void readPower()
 
 void initBoard()
 {
+  Serial.println("initializing board");
+
   pinMode(BRD_SW1, INPUT);
   pinMode(BRD_SW2, INPUT);
   pinMode(BRD_SW3, INPUT);
@@ -378,6 +402,8 @@ void initBoard()
   digitalWrite(BRD_LED1, HIGH);
   delay(STARTUP_DELAY_MS);
   digitalWrite(BRD_LED1, LOW);
+
+  Serial.println("board initialized");
 }
 
 void readBoard()
@@ -385,19 +411,23 @@ void readBoard()
   if ((millis() - lastDebounceTime) > DEBOUNCE_MS)
   {
     lastDebounceTime = millis();
-    incrementButtonPushed = digitalRead(BRD_SW3) == HIGH ? false : true;
-    decrementButtonPushed = digitalRead(BRD_SW1) == HIGH ? false : true;
-    resetButtonPushed = digitalRead(BRD_SW2) == HIGH ? false : true;
+    incrementButtonPushed = !digitalRead(BRD_SW3);
+    decrementButtonPushed = !digitalRead(BRD_SW1);
+    resetButtonPushed = !digitalRead(BRD_SW2);
   }
 }
 
 void writeBoard()
 {
-  digitalWrite(BRD_LED2, motorStalled ? HIGH : LOW);
+  digitalWrite(BRD_LED2, motorStalled);
 }
 
 void initMotor()
 {
+  // https://www.analog.com/media/en/technical-documentation/data-sheets/TMC2209_datasheet_rev1.09.pdf
+  Serial.println("initializing motor driver");
+
+  // Configure ESP pins used to communicate with motor driver
   pinMode(TMC_STEP, OUTPUT);
   pinMode(TMC_DIR, OUTPUT);
   pinMode(TMC_MS1, OUTPUT);
@@ -409,15 +439,51 @@ void initMotor()
   digitalWrite(TMC_MS1, LOW);
   digitalWrite(TMC_MS2, LOW);
 
-  motorDriver.setup(motorSerial, TMC_SERIAL_BAUD_RATE, TMC2209::SERIAL_ADDRESS_0, TMC_RX, TMC_TX);
+  // Initialize motor driver
+  motorDriver.setup(
+    motorSerial, TMC_SERIAL_BAUD_RATE, TMC2209::SERIAL_ADDRESS_0, TMC_RX, TMC_TX);
+
+  // Configure current scaling
   motorDriver.enableAutomaticCurrentScaling();
   motorDriver.setRunCurrent(current);
+  Serial.print("  current scaling ");
+  Serial.print(current);
+  Serial.println("%");
+
+  // Configure microsteps per step
+  // Effective resolution of velocity commands
   motorDriver.setMicrostepsPerStep(microsteps);
+  Serial.print("  microsteps per step ");
+  Serial.println(microsteps);
+
+  // Configure threshold for stall detection
+  // Driver will report "motor stalled" when its current readings go above this
   motorDriver.setStallGuardThreshold(stallThreshold);
+  Serial.print("  stall threshold ");
+  Serial.print(stallThreshold);
+  Serial.println("A");
+
+  // Configure standstill mode
+  // Tells the driver how to react when velocity is set to zero while motor is moving
   motorDriver.setStandstillMode((TMC2209::StandstillMode)standstillMode);
+  Serial.print("  standstill ");
+  Serial.println(TMC_STANDSTILL[standstillMode]);
+
+  // Configure stealth chop to reduce noise at low velocities
+  // Tells the driver to regulate current to match supplied voltage dynamically
   motorDriver.enableStealthChop();
+  Serial.println("  stealth chop enabled");
+
+  // Configure velocity above which Cool Step feature will be activated
+  // Tells the driver to regulate current to match load attached to motor
+  // Using only as much current as needed saves power and lengthens motor life
   motorDriver.setCoolStepDurationThreshold(5000);
+  Serial.println("  cool step threshold 5000");
+
+  // Disable motor until we have "power good" signal from power delivery module
   motorDriver.disable();
+
+  Serial.println("motor driver initialized");
 }
 
 void writeMotorEnabled(bool enabled)
@@ -439,16 +505,15 @@ void writeMotorVelocity(int velocity)
 
 void writeMotorStepDirection(bool direction)
 {
-  digitalWrite(TMC_DIR, direction ? HIGH : LOW);
-  digitalWrite(TMC_STEP, motorState ? HIGH : LOW);
-
+  digitalWrite(TMC_DIR, direction);
+  digitalWrite(TMC_STEP, motorState);
   motorState = !motorState;
 }
 
 void readMotor()
 {
   motorEnabled = !motorDriver.hardwareDisabled();
-  motorStalled = digitalRead(TMC_OVERCURRENT) == HIGH;
+  motorStalled = digitalRead(TMC_OVERCURRENT);
   motorStallGuard = motorDriver.getStallGuardResult();
 
   TMC2209::Status status = motorDriver.getStatus();
@@ -520,16 +585,23 @@ void readEncoder()
   if (Wire.available() < 2)
     return;
 
-  int reading = Wire.read() << 8 | Wire.read();
+  int hi = Wire.read();
+  int lo = Wire.read();
+
+  // Convert
+  int reading = hi << 8 | lo;
 
   // Keep track of revolutions
-  if (rawPosition > 3000 && reading < 1000)
+  if (rawPosition != -1)
   {
-    revolutions++;
-  }
-  else if (rawPosition < 1000 && reading > 3000)
-  {
-    revolutions--;
+    if (rawPosition > 3000 && reading < 1000)
+    {
+      revolutions++;
+    }
+    else if (rawPosition < 1000 && reading > 3000)
+    {
+      revolutions--;
+    }
   }
 
   rawPosition = reading;
@@ -537,8 +609,8 @@ void readEncoder()
 
   // Calculate normalized position
   float norm = 
-    (constrain(rawPositionWithRevolutions, encoderMin, encoderMax) - encoderMin)
-    / (encoderMax - encoderMin);
+    float(constrain(rawPositionWithRevolutions, encoderMin, encoderMax) - encoderMin)
+    / float(encoderMax - encoderMin);
 
   // Scale to final position range
   position = positionMin + norm * (positionMax - positionMin);
@@ -546,7 +618,10 @@ void readEncoder()
 
 void readSettings()
 {
+  Serial.println("loading settings from flash");
+
   preferences.begin("settings", false);
+  name = preferences.getString("name", name);
   voltage = (VOLTAGE)preferences.getInt("voltage", voltage);
   current = preferences.getInt("current", current);
   microsteps = preferences.getInt("microsteps", microsteps);
@@ -566,11 +641,53 @@ void readSettings()
   iMax = preferences.getFloat("iMax", iMax);
   tolerance = preferences.getFloat("tolerance", tolerance);
   preferences.end();
+
+  Serial.print("name ");
+  Serial.println(name.c_str());
+
+  Serial.print("  encoder min ");
+  Serial.println(encoderMin);
+
+  Serial.print("  encoder max ");
+  Serial.println(encoderMax);
+
+  Serial.print("  position min ");
+  Serial.println(positionMin);
+
+  Serial.print("  position max ");
+  Serial.println(positionMax);
+
+  Serial.print("  velocity min ");
+  Serial.println(velocityMin);
+
+  Serial.print("  velocity max ");
+  Serial.println(velocityMax);
+
+  Serial.print("  Kp ");
+  Serial.println(Kp);
+
+  Serial.print("  Ki ");
+  Serial.println(Ki);
+
+  Serial.print("  Kd ");
+  Serial.println(Kd);
+
+  Serial.print("  iMin ");
+  Serial.println(iMin);
+
+  Serial.print("  iMax ");
+  Serial.println(iMax);
+
+  Serial.print("  tolerance ");
+  Serial.println(tolerance);
+
+  Serial.println("settings loaded");
 }
 
 void writeSettings()
 {
   preferences.begin("settings", false);
+  preferences.putString("name", name.c_str());
   preferences.putInt("voltage", (int)voltage);
   preferences.putInt("current", current);
   preferences.putInt("microsteps", microsteps);
@@ -599,17 +716,29 @@ void enabledCommand(bool value)
 
 void positionCommand(float command)
 {
+  mode = POSITION;
   commandedPosition = command;
 }
 
 void velocityCommand(int command)
 {
+  mode = VELOCITY;
   commandedVelocity = command;
 }
 
 void settingsCommand(const Settings& settings)
 {
+  // Reset mode
+  mode = MANUAL;
+
+  // Stop motor
   writeMotorVelocity(0);
+
+  // Apply settings
+  if (name != settings.name)
+  {
+    name = settings.name;
+  }
 
   if (voltage != settings.voltage)
   {
@@ -662,8 +791,10 @@ void settingsCommand(const Settings& settings)
 
 void statusFeedback(Status& status)
 {
+  status.name = name.c_str();
   status.mode = mode;
   status.enabled = enabled;
+  status.powerGood = powerGood;
   status.rawPosition = rawPositionWithRevolutions;
   status.position = position;
   status.velocity = commandedVelocity;
@@ -689,6 +820,7 @@ void velocityFeedback(int& velocity)
 
 void settingsFeedback(Settings& settings)
 {
+  settings.name = name.c_str();
   settings.voltage = voltage;
   settings.current = current;
   settings.microsteps = microsteps;

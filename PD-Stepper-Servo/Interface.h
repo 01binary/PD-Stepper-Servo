@@ -12,9 +12,9 @@
 
 enum MODE
 {
-  POSITION,   // PID with position command
+  MANUAL,     // Manual control via buttons
   VELOCITY,   // Velocity command (microsteps)
-  MANUAL      // Manual control via buttons
+  POSITION    // PID with position command
 };
 
 enum VOLTAGE
@@ -40,8 +40,11 @@ enum STANDSTILL
 
 struct Status
 {
+  const char* name;
+
   MODE mode;
   bool enabled;
+  bool powerGood;
 
   int rawPosition;
   float position;
@@ -65,6 +68,8 @@ struct PositionFeedback
 
 struct Settings
 {
+  const char* name;
+
   VOLTAGE voltage;
   int current;
   int microsteps;

@@ -13,11 +13,24 @@
 #include <ESPAsyncWebServer.h> // https://github.com/me-no-dev/ESPAsyncWebServer
 #include <AsyncTCP.h>          // https://github.com/me-no-dev/AsyncTCP
 #include <ArduinoJson.h>       // https://github.com/bblanchon/ArduinoJson
-#include <AsyncJson.h>
 #include <esp_wifi.h>
-#include <esp_event.h>
-#include <functional>
 #include "Interface.h"
+
+//
+// Definitions
+//
+
+#define DEFAULT_HANDLER [](AsyncWebServerRequest* request) {}
+
+//
+// Constants
+//
+
+const char* const MODE_DESCRIPTION[] = {
+  "manual",
+  "velocity",
+  "position"
+};
 
 //
 // Variables
@@ -29,9 +42,7 @@ AsyncWebServer* pServer = NULL;
 // Forward Declarations
 //
 
-void deserializeJsonBody(
-  AsyncWebServerRequest *request,
-  const std::function <void (JsonDocument&)>& callback);
+void deserializeRequestJson(JsonDocument& doc, uint8_t* data, size_t len);
 
 //
 // Functions
@@ -54,7 +65,7 @@ void useRestInterface(
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
 
-  Serial.print("Connecting to ");
+  Serial.print("connecting to ");
   Serial.print(ssid);
   Serial.print(" with ");
   Serial.println(password);
@@ -64,11 +75,11 @@ void useRestInterface(
     delay(500);
   }
 
-  Serial.print("Connected with ");
+  Serial.print("connected with ");
   Serial.println(WiFi.localIP());
 
   // Create server
-  Serial.print("Starting server on port ");
+  Serial.print("starting server on port ");
   Serial.println(port);
 
   pServer = new AsyncWebServer(port);
@@ -80,8 +91,10 @@ void useRestInterface(
     statusFeedback(status);
 
     JsonDocument doc;
-    doc["mode"] = status.mode;
+    doc["name"] = status.name;
+    doc["mode"] = MODE_DESCRIPTION[status.mode];
     doc["enabled"] = status.enabled;
+    doc["powerGood"] = status.powerGood;
     doc["rawPosition"] = status.rawPosition;
     doc["position"] = status.position;
     doc["velocity"] = status.velocity;
@@ -103,6 +116,7 @@ void useRestInterface(
     settingsFeedback(settings);
 
     JsonDocument doc;
+    doc["name"] = settings.name;
     doc["voltage"] = settings.voltage;
     doc["current"] = settings.current;
     doc["microsteps"] = settings.microsteps;
@@ -111,6 +125,8 @@ void useRestInterface(
     doc["buttonVelocity"] = settings.buttonVelocity;
     doc["encoderMin"] = settings.encoderMin;
     doc["encoderMax"] = settings.encoderMax;
+    doc["positionMin"] = settings.positionMin;
+    doc["positionMax"] = settings.positionMax;
     doc["velocityMin"] = settings.velocityMin;
     doc["velocityMax"] = settings.velocityMax;
     doc["Kp"] = settings.Kp;
@@ -161,77 +177,78 @@ void useRestInterface(
   });
 
   // Enable command
-  pServer->on("/enable", HTTP_POST, [enableCommand](AsyncWebServerRequest *request)
+  pServer->on("/enable", HTTP_POST, DEFAULT_HANDLER, NULL, [enableCommand](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total)
   {
-    deserializeJsonBody(request, [enableCommand, request](JsonDocument& doc)
-    {
-      enableCommand(doc["enabled"].as<bool>());
-      request->send(200);
-    });
+    JsonDocument doc;
+    deserializeRequestJson(doc, data, len);
+
+    bool enable = doc["enable"].as<bool>();
+    enableCommand(enable);
+
+    request->send(200);
   });
 
   // Position command
-  pServer->on("/position", HTTP_POST, [positionCommand](AsyncWebServerRequest *request)
+  pServer->on("/position", HTTP_POST, DEFAULT_HANDLER, NULL, [positionCommand](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total)
   {
-    deserializeJsonBody(request, [positionCommand, request](JsonDocument& doc)
-    {
-      positionCommand(doc["position"].as<float>());
-      request->send(200);
-    });
+    JsonDocument doc;
+    deserializeRequestJson(doc, data, len);
+  
+    float position = doc["position"].as<float>();
+    positionCommand(position);
+
+    request->send(200);
   });
 
   // Velocity command
-  pServer->on("/velocity", HTTP_POST, [velocityCommand](AsyncWebServerRequest *request)
+  pServer->on("/velocity", HTTP_POST, DEFAULT_HANDLER, NULL, [velocityCommand](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total)
   {
-    deserializeJsonBody(request, [velocityCommand, request](JsonDocument& doc)
-    {
-      velocityCommand(doc["velocity"].as<int>());
-      request->send(200);
-    });
+    JsonDocument doc;
+    deserializeRequestJson(doc, data, len);
+  
+    int velocity = doc["velocity"].as<int>();
+    velocityCommand(velocity);
+
+    request->send(200);
   });
 
   // Settings command
-  pServer->on("/settings", HTTP_POST, [settingsCommand](AsyncWebServerRequest *request)
+  pServer->on("/settings", HTTP_POST, DEFAULT_HANDLER, NULL, [settingsCommand](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total)
   {
-    deserializeJsonBody(request, [settingsCommand, request](JsonDocument& doc)
-    {
-      Settings settings;
-      settings.voltage = (VOLTAGE)doc["voltage"].as<int>();
-      settings.current = doc["current"].as<int>();
-      settings.microsteps = doc["microsteps"].as<int>();
-      settings.stallThreshold = doc["stallThreshold"].as<int>();
-      settings.standstillMode = doc["standstillMode"].as<STANDSTILL>();
-      settings.buttonVelocity = doc["buttonVelocity"].as<int>();
-      settings.encoderMin = doc["encoderMin"].as<int>();
-      settings.encoderMax = doc["encoderMax"].as<int>();
-      settings.velocityMin = doc["velocityMin"].as<int>();
-      settings.velocityMax = doc["velocityMax"].as<int>();
-      settings.Kp = doc["Kp"].as<float>();
-      settings.Ki = doc["Ki"].as<float>();
-      settings.Kd = doc["Kd"].as<float>();
-      settings.iMin = doc["iMin"].as<float>();
-      settings.iMax = doc["iMax"].as<float>();
-      settings.tolerance = doc["tolerance"].as<float>();
+    JsonDocument doc;
+    deserializeRequestJson(doc, data, len);
 
-      settingsCommand(settings);
+    Settings settings;
+    settings.name = doc["name"];
+    settings.voltage = (VOLTAGE)doc["voltage"].as<int>();
+    settings.current = doc["current"].as<int>();
+    settings.microsteps = doc["microsteps"].as<int>();
+    settings.stallThreshold = doc["stallThreshold"].as<int>();
+    settings.standstillMode = doc["standstillMode"].as<STANDSTILL>();
+    settings.buttonVelocity = doc["buttonVelocity"].as<int>();
+    settings.encoderMin = doc["encoderMin"].as<int>();
+    settings.encoderMax = doc["encoderMax"].as<int>();
+    settings.positionMin = doc["positionMin"].as<float>();
+    settings.positionMax = doc["positionMax"].as<float>();
+    settings.velocityMin = doc["velocityMin"].as<int>();
+    settings.velocityMax = doc["velocityMax"].as<int>();
+    settings.Kp = doc["Kp"].as<float>();
+    settings.Ki = doc["Ki"].as<float>();
+    settings.Kd = doc["Kd"].as<float>();
+    settings.iMin = doc["iMin"].as<float>();
+    settings.iMax = doc["iMax"].as<float>();
+    settings.tolerance = doc["tolerance"].as<float>();
 
-      request->send(200);
-    });
+    settingsCommand(settings);
+
+    request->send(200);
   });
 
   pServer->begin();
 }
 
-void deserializeJsonBody(
-  AsyncWebServerRequest *request,
-  const std::function <void (JsonDocument&)>& callback)
+void deserializeRequestJson(JsonDocument& doc, uint8_t* data, size_t len)
 {
-  if (request->hasParam("body", true))
-  {
-    JsonDocument doc;
-    String json = request->getParam("body", true)->value();
-
-    deserializeJson(doc, json);
-    callback(doc);
-  }
+  String json = String((char*)data).substring(0, len);
+  deserializeJson(doc, json);
 }
