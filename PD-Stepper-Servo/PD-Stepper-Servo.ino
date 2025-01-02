@@ -10,8 +10,6 @@
 // Multi-threading
 
 #include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "freertos/event_groups.h"
 
 // TMC2209 Stepper Motor Driver
 
@@ -115,7 +113,7 @@ String name = "PD-Stepper";
 VOLTAGE voltage = VOLTAGE_5V;
 int current = 100;
 int microsteps = 32;
-int stallThreshold = 10;
+int stallThreshold = 60;
 STANDSTILL standstillMode = NORMAL;
 float tolerance = 0.1;
 float Kp = 100;
@@ -124,8 +122,8 @@ float Kd = 10;
 float iMin = -10;
 float iMax = 10;
 int velocityMin = 0;
-int velocityMax = 3000;
-int buttonVelocity = 100;
+int velocityMax = 330;
+int buttonVelocity = 330;
 
 // Encoder
 
@@ -195,8 +193,8 @@ void setup()
   initPower();
   initMotor();
   initEncoder();
-  initMotorControl();
   initBoard();
+  initMotorControl();
 
   useRestInterface(
     "TEST",
@@ -215,17 +213,18 @@ void setup()
 
 void loop()
 {
+  runMotorControl(NULL);
 }
 
 void initMotorControl()
 {
-  xTaskCreate(
+  /*xTaskCreate(
     runMotorControl,
     "MotorControl",
     2048,
     NULL,
     configMAX_PRIORITIES - 1,
-    NULL);
+    NULL);*/
 }
 
 void runMotorControl(void *pvParameters)
@@ -246,6 +245,25 @@ void runMotorControl(void *pvParameters)
       continue;
     }
 
+    if (incrementButtonPushed)
+    {
+      mode = MANUAL;
+      enabled = true;
+      writeMotorVelocity(buttonVelocity);
+    }
+    else if (decrementButtonPushed)
+    {
+      mode = MANUAL;
+      enabled = true;
+      writeMotorVelocity(-buttonVelocity);
+    }
+    else if (resetButtonPushed)
+    {
+      mode = MANUAL;
+      enabled = true;
+      writeMotorVelocity(0);
+    }
+
     if (enabled != motorEnabled)
     {
       writeMotorEnabled(enabled);
@@ -254,22 +272,6 @@ void runMotorControl(void *pvParameters)
     if (!enabled)
     {
       continue;
-    }
-
-    if (incrementButtonPushed)
-    {
-      mode = MANUAL;
-      writeMotorVelocity(buttonVelocity);
-    }
-    else if (decrementButtonPushed)
-    {
-      mode = MANUAL;
-      writeMotorVelocity(-buttonVelocity);
-    }
-    else if (resetButtonPushed)
-    {
-      mode = MANUAL;
-      writeMotorVelocity(0);
     }
 
     if (mode == VELOCITY)
@@ -500,7 +502,13 @@ void writeMotorEnabled(bool enabled)
 
 void writeMotorVelocity(int velocity)
 {
-  motorDriver.moveAtVelocity(velocity);
+  static int lastVelocity = 0;
+
+  if (velocity != lastVelocity)
+  {
+    motorDriver.moveAtVelocity(velocity * microsteps);
+    lastVelocity = velocity;
+  }
 }
 
 void writeMotorStepDirection(bool direction)
