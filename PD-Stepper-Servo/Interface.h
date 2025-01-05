@@ -34,6 +34,18 @@ enum STANDSTILL
   BRAKING = 3
 };
 
+enum MICROSTEPS
+{
+  MICROSTEPS_1 = 1,
+  MICROSTEPS_4 = 4,
+  MICROSTEPS_8 = 8,
+  MICROSTEPS_16 = 16,
+  MICROSTEPS_32 = 32,
+  MICROSTEPS_64 = 64,
+  MICROSTEPS_128 = 128,
+  MICROSTEPS_256 = 256
+};
+
 //
 // Structures
 //
@@ -52,8 +64,11 @@ struct Status
   int velocity;
 
   float voltage;
+  int current;
+
   bool overTemp;
   bool overTempShutdown;
+  unsigned int stallGuard;
   bool stalled;
 };
 
@@ -72,9 +87,10 @@ struct Settings
 
   VOLTAGE voltage;
   int current;
-  int microsteps;
+  MICROSTEPS microstepsPerStep;
   int stallThreshold;
   STANDSTILL standstillMode;
+  int coolStepDurationThreshold;
   int buttonVelocity;
 
   int encoderMin;

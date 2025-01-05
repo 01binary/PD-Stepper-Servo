@@ -48,7 +48,7 @@ void deserializeRequestJson(JsonDocument& doc, uint8_t* data, size_t len);
 // Functions
 //
 
-void useRestInterface(
+void initRestInterface(
   const char* ssid,
   const char* password,
   int port,
@@ -65,23 +65,12 @@ void useRestInterface(
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
 
-  Serial.print("connecting to ");
-  Serial.print(ssid);
-  Serial.print(" with ");
-  Serial.println(password);
-
   while (WiFi.waitForConnectResult() != WL_CONNECTED)
   {
     delay(500);
   }
 
-  Serial.print("connected with ");
-  Serial.println(WiFi.localIP());
-
   // Create server
-  Serial.print("starting server on port ");
-  Serial.println(port);
-
   pServer = new AsyncWebServer(port);
 
   // Status feedback
@@ -99,8 +88,10 @@ void useRestInterface(
     doc["position"] = status.position;
     doc["velocity"] = status.velocity;
     doc["voltage"] = status.voltage;
+    doc["current"] = status.current;
     doc["overTemp"] = status.overTemp;
     doc["overTempShutdown"] = status.overTempShutdown;
+    doc["stallGuard"] = status.stallGuard;
     doc["stalled"] = status.stalled;
 
     String res;
@@ -119,9 +110,10 @@ void useRestInterface(
     doc["name"] = settings.name;
     doc["voltage"] = settings.voltage;
     doc["current"] = settings.current;
-    doc["microsteps"] = settings.microsteps;
+    doc["microstepsPerStep"] = settings.microstepsPerStep;
     doc["stallThreshold"] = settings.stallThreshold;
     doc["standstillMode"] = settings.standstillMode;
+    doc["coolStepDurationThreshold"] = settings.coolStepDurationThreshold;
     doc["buttonVelocity"] = settings.buttonVelocity;
     doc["encoderMin"] = settings.encoderMin;
     doc["encoderMax"] = settings.encoderMax;
@@ -222,9 +214,10 @@ void useRestInterface(
     settings.name = doc["name"];
     settings.voltage = (VOLTAGE)doc["voltage"].as<int>();
     settings.current = doc["current"].as<int>();
-    settings.microsteps = doc["microsteps"].as<int>();
+    settings.microstepsPerStep = (MICROSTEPS)doc["microstepsPerStep"].as<int>();
     settings.stallThreshold = doc["stallThreshold"].as<int>();
     settings.standstillMode = doc["standstillMode"].as<STANDSTILL>();
+    settings.coolStepDurationThreshold = doc["coolStepDurationThreshold"].as<int>();
     settings.buttonVelocity = doc["buttonVelocity"].as<int>();
     settings.encoderMin = doc["encoderMin"].as<int>();
     settings.encoderMax = doc["encoderMax"].as<int>();
