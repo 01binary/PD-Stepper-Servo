@@ -107,7 +107,7 @@ String name = "PD-Stepper";
 VOLTAGE voltage = VOLTAGE_5V;
 int current = 30;
 MICROSTEPS microstepsPerStep = MICROSTEPS_32;
-int stallThreshold = 40;
+int stallThreshold = 64;
 STANDSTILL standstillMode = FREEWHEELING;
 int coolStepDurationThreshold = 5000;
 float tolerance = 0.1;
@@ -249,23 +249,29 @@ bool manualControl()
   return false;
 }
 
+bool powerEnabled()
+{
+  if (!powerGood && motorEnabled)
+  {
+    enabled = false;
+    writeMotorEnabled(false);
+    return false;
+  }
+
+  return true;
+}
+
 void controller(void *pvParameters)
 {
   const TickType_t freq = pdMS_TO_TICKS(TIMESTEP_MS);
   TickType_t lastTime = xTaskGetTickCount();
 
-  while (1)
+  while (true)
   {
     readEncoder();
     readMotor();
-    
-    if (!powerGood && motorEnabled)
-    {
-      writeMotorEnabled(false);
-      continue;
-    }
 
-    if (manualControl())
+    if (!powerEnabled() || manualControl() || !enabled)
     {
       continue;
     }
@@ -275,11 +281,11 @@ void controller(void *pvParameters)
       writeMotorEnabled(enabled);
     }
 
-    if (enabled && mode == VELOCITY)
+    if (mode == VELOCITY)
     {
       writeMotorVelocity(commandedVelocity);
     }
-    else if (enabled && mode == POSITION)
+    else if (mode == POSITION)
     {
       // Calculate proportional error
       float error = commandedPosition - position;
@@ -446,7 +452,6 @@ void writeMotorEnabled(bool enabled)
 
 void writeMotorVelocity(int velocity)
 {
-  motorDriver.moveAtVelocity(velocity * microstepsPerStep);
   motorDriver.moveAtVelocity(velocity * microstepsPerStep);
 }
 
