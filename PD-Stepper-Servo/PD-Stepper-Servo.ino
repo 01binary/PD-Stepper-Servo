@@ -36,7 +36,7 @@
 
 const int RATE_HZ = 50;
 const int TIMESTEP_MS = 1000 / RATE_HZ;
-const float TIMESTEP = 1.0 / RATE_HZ;
+const double TIMESTEP = 1.0 / RATE_HZ;
 const int BUTTON_DEBOUNCE_MS = 50;
 const int STARTUP_DELAY_MS = 200;
 
@@ -67,9 +67,9 @@ const int PD_VBUS = 4;
 const int PD_CFG1 = 38;
 const int PD_CFG2 = 48;
 const int PD_CFG3 = 47;
-const float PD_VREF = 3.3;
-const float PD_DIV = 0.1189427313;
-const float PD_VOLTAGE_MULTIPLIER = PD_VREF / 4096.0 / PD_DIV;
+const double PD_VREF = 3.3;
+const double PD_DIV = 0.1189427313;
+const double PD_VOLTAGE_MULTIPLIER = PD_VREF / 4096.0 / PD_DIV;
 
 // PD Stepper Board
 
@@ -88,36 +88,31 @@ const int BRD_AUX2 = 13;
 
 // State
 
-MODE mode = MANUAL;
+COMMAND_MODE commandMode = MANUAL;
+CONTROL_MODE controlMode = CURRENT_CONTROL;
 bool enabled = false;
 int commandedVelocity = 0;
-float commandedPosition = 0;
-float proportionalError = 0;
-float integralError = 0;
-float derivativeError = 0;
+double commandedPosition = 0;
+double proportionalError = 0;
+double integralError = 0;
+double derivativeError = 0;
 bool incrementButtonPushed = false;
 bool decrementButtonPushed = false;
 bool resetButtonPushed = false;
 unsigned long lastDebounceTime = 0;
 
-// Configuration
+// Controller
 
 Preferences preferences;
 String name = "PD-Stepper";
-VOLTAGE voltage = VOLTAGE_5V;
-int current = 30;
-MICROSTEPS microstepsPerStep = MICROSTEPS_32;
-int stallThreshold = 64;
-STANDSTILL standstillMode = FREEWHEELING;
-int coolStepDurationThreshold = 5000;
-float tolerance = 0.1;
-float Kp = 100;
-float Ki = 10;
-float Kd = 10;
-float iMin = -10;
-float iMax = 10;
-int velocityMin = 0;
-int velocityMax = 330;
+double tolerance = 0.1;
+double Kp = 100;
+double Ki = 10;
+double Kd = 10;
+double iMin = -10;
+double iMax = 10;
+int velocityMin = 5;
+int velocityMax = 1440;
 int buttonVelocity = 30;
 
 // Encoder
@@ -127,9 +122,9 @@ int revolutions = 0;
 int rawPositionWithRevolutions = 0;
 int encoderMin = 0;
 int encoderMax = AS5600_MAX;
-float positionMin = 0.0;
-float positionMax = 1.0;
-float position = 0.0;
+double positionMin = 0.0;
+double positionMax = 1.0;
+double position = 0.0;
 
 // Stepper Driver
 
@@ -141,11 +136,20 @@ bool motorOverTemp = false;
 bool motorOverTempShutdown = false;
 bool motorStalled = false;
 unsigned int motorStallGuard = 0;
+unsigned int count = 0;
+VOLTAGE voltage = VOLTAGE_5V;
+int current = 30;
+int holdCurrent = 30;
+int holdDelay = 0;
+MICROSTEPS microstepsPerStep = MICROSTEPS_32;
+STANDSTILL standstillMode = NORMAL;
+int stallThreshold = 70;
+int coolStepDurationThreshold = 5000;
 
 // Power Delivery
 
 bool powerGood = false;
-float busVoltage = 0;
+double busVoltage = 0;
 
 //
 // Forward Declarations
@@ -165,7 +169,7 @@ void writeMotorVelocity(int velocity);
 void initController();
 void controller(void *pvParameters);
 void enableCommand(bool enabled);
-void positionCommand(float position);
+void positionCommand(double position);
 void velocityCommand(int velocity);
 void settingsCommand(const Settings& settings);
 void statusFeedback(Status& status);
@@ -180,6 +184,8 @@ void settingsFeedback(Settings& settings);
 void setup()
 {
   delay(STARTUP_DELAY_MS);
+
+  Serial.begin(115200);
 
   readSettings();
 
@@ -220,26 +226,32 @@ bool manualControl()
 {
   if (incrementButtonPushed)
   {
-    mode = MANUAL;
+    commandMode = MANUAL;
+    commandedVelocity = buttonVelocity;
     enabled = true;
+
     writeMotorEnabled(true);
-    writeMotorVelocity(buttonVelocity);
+    writeMotorVelocity(commandedVelocity);
 
     return true;
   }
   else if (decrementButtonPushed)
   {
-    mode = MANUAL;
+    commandMode = MANUAL;
+    commandedVelocity = -buttonVelocity;
     enabled = true;
+
     writeMotorEnabled(true);
-    writeMotorVelocity(-buttonVelocity);
+    writeMotorVelocity(commandedVelocity);
 
     return true;
   }
   else if (resetButtonPushed)
   {
-    mode = MANUAL;
+    commandMode = MANUAL;
+    commandedVelocity = 0;
     enabled = true;
+
     writeMotorEnabled(true);
     writeMotorVelocity(0);
 
@@ -281,20 +293,21 @@ void controller(void *pvParameters)
       writeMotorEnabled(enabled);
     }
 
-    if (mode == VELOCITY)
+    if (commandMode == VELOCITY)
     {
       writeMotorVelocity(commandedVelocity);
     }
-    else if (mode == POSITION)
+    else if (commandMode == POSITION)
     {
       // Calculate proportional error
-      float error = commandedPosition - position;
+      double error = commandedPosition - position;
 
       // Stop if within tolerance
-      if (error <= tolerance)
+      if (abs(error) <= tolerance)
       {
         if (commandedVelocity != 0)
         {
+          proportionalError = error;
           commandedVelocity = 0;
           writeMotorVelocity(0);
         }
@@ -317,10 +330,10 @@ void controller(void *pvParameters)
       proportionalError = error;
 
       // Calculate proportional contribution
-      float proportional = Kp * proportionalError;
+      double proportional = Kp * proportionalError;
 
       // Calculate integral contribution
-      float integral = Ki * integralError;
+      double integral = Ki * integralError;
 
       if (limitIntegralError)
       {
@@ -328,7 +341,7 @@ void controller(void *pvParameters)
       }
 
       // Calculate derivative contribution
-      float derivative = Kd * derivativeError;
+      double derivative = Kd * derivativeError;
 
       // Calculate command
       int rawCommand = int(proportional + integral + derivative);
@@ -388,7 +401,7 @@ void initBoard()
 
   // Flash LED after setup complete
   digitalWrite(BRD_LED1, HIGH);
-  delay(STARTUP_DELAY_MS);
+  delay(500);
   digitalWrite(BRD_LED1, LOW);
 }
 
@@ -428,7 +441,16 @@ void initMotor()
   // Initialize motor driver
   motorDriver.setup(motorSerial, TMC_SERIAL_BAUD_RATE, TMC2209::SERIAL_ADDRESS_0, TMC_RX, TMC_TX);
   motorDriver.setHardwareEnablePin(TMC_ENABLED);
-  motorDriver.enableAutomaticCurrentScaling();
+
+  if (controlMode == CURRENT_CONTROL)
+  {
+    motorDriver.enableAutomaticCurrentScaling();
+  }
+  else
+  {
+    motorDriver.disableAutomaticCurrentScaling();
+  }
+
   motorDriver.setRunCurrent(current);
   motorDriver.setMicrostepsPerStep((int)microstepsPerStep);
   motorDriver.setStallGuardThreshold(stallThreshold);
@@ -460,6 +482,7 @@ void readMotor()
   motorEnabled = !motorDriver.hardwareDisabled();
   motorStalled = digitalRead(TMC_OVERCURRENT);
   motorStallGuard = motorDriver.getStallGuardResult();
+  count = motorDriver.getMicrostepCounter();
 
   TMC2209::Status status = motorDriver.getStatus();
   motorOverTemp = status.over_temperature_warning;
@@ -537,13 +560,13 @@ void readEncoder()
   int reading = hi << 8 | lo;
 
   // Keep track of revolutions
-  if (rawPosition != -1)
+  if (rawPosition != -1 && abs(rawPosition - reading) > AS5600_MAX / 2)
   {
-    if (rawPosition > 3000 && reading < 1000)
+    if (commandedVelocity > 0)
     {
       revolutions++;
     }
-    else if (rawPosition < 1000 && reading > 3000)
+    else if (commandedVelocity < 0)
     {
       revolutions--;
     }
@@ -553,9 +576,9 @@ void readEncoder()
   rawPositionWithRevolutions = rawPosition + AS5600_MAX * revolutions;
 
   // Calculate normalized position
-  float norm = 
-    float(constrain(rawPositionWithRevolutions, encoderMin, encoderMax) - encoderMin)
-    / float(encoderMax - encoderMin);
+  double norm = 
+    double(constrain(rawPositionWithRevolutions, encoderMin, encoderMax) - encoderMin)
+    / double(encoderMax - encoderMin);
 
   // Scale to final position range
   position = positionMin + norm * (positionMax - positionMin);
@@ -565,8 +588,11 @@ void readSettings()
 {
   preferences.begin("settings", false);
   name = preferences.getString("name", name);
+  controlMode = (CONTROL_MODE)preferences.getInt("controlMode", (int)controlMode);
   voltage = (VOLTAGE)preferences.getInt("voltage", voltage);
   current = preferences.getInt("current", current);
+  holdCurrent = preferences.getInt("holdCurrent", holdCurrent);
+  holdDelay = preferences.getInt("holdDelay", holdDelay);
   microstepsPerStep = (MICROSTEPS)preferences.getInt("microstepsPerStep", (int)microstepsPerStep);
   stallThreshold = preferences.getInt("stallThreshold", stallThreshold);
   standstillMode = (STANDSTILL)preferences.getInt("standstillMode", (int)standstillMode);
@@ -574,16 +600,16 @@ void readSettings()
   buttonVelocity = preferences.getInt("buttonVelocity", buttonVelocity);
   encoderMin = preferences.getInt("encoderMin", encoderMin);
   encoderMax = preferences.getInt("encoderMax", encoderMax);
-  positionMin = preferences.getFloat("positionMin", positionMin);
-  positionMax = preferences.getFloat("positionMax", positionMax);
+  positionMin = preferences.getDouble("positionMin", positionMin);
+  positionMax = preferences.getDouble("positionMax", positionMax);
   velocityMin = preferences.getInt("velocityMin", velocityMin);
   velocityMax = preferences.getInt("velocityMax", velocityMax);
-  Kp = preferences.getFloat("Kp", Kp);
-  Ki = preferences.getFloat("Ki", Ki);
-  Kd = preferences.getFloat("Id", Kd);
-  iMin = preferences.getFloat("iMin", iMin);
-  iMax = preferences.getFloat("iMax", iMax);
-  tolerance = preferences.getFloat("tolerance", tolerance);
+  Kp = preferences.getDouble("Kp", Kp);
+  Ki = preferences.getDouble("Ki", Ki);
+  Kd = preferences.getDouble("Id", Kd);
+  iMin = preferences.getDouble("iMin", iMin);
+  iMax = preferences.getDouble("iMax", iMax);
+  tolerance = preferences.getDouble("tolerance", tolerance);
   preferences.end();
 }
 
@@ -591,8 +617,11 @@ void writeSettings()
 {
   preferences.begin("settings", false);
   preferences.putString("name", name.c_str());
+  preferences.putInt("controlMode", (int)controlMode);
   preferences.putInt("voltage", (int)voltage);
   preferences.putInt("current", current);
+  preferences.putInt("holdCurrent", holdCurrent);
+  preferences.putInt("holdDelay", holdDelay);
   preferences.putInt("microstepsPerStep", microstepsPerStep);
   preferences.putInt("stallThreshold", stallThreshold);
   preferences.putInt("standstillMode", (int)standstillMode);
@@ -600,44 +629,43 @@ void writeSettings()
   preferences.putInt("buttonVelocity", buttonVelocity);
   preferences.putInt("encoderMin", encoderMin);
   preferences.putInt("encoderMax", encoderMax);
-  preferences.putFloat("positionMin", positionMin);
-  preferences.putFloat("positionMax", positionMax);
+  preferences.putDouble("positionMin", positionMin);
+  preferences.putDouble("positionMax", positionMax);
   preferences.putInt("velocityMin", velocityMin);
   preferences.putInt("velocityMax", velocityMax);
-  preferences.putFloat("Kp", Kp);
-  preferences.putFloat("Ki", Ki);
-  preferences.putFloat("Id", Kd);
-  preferences.putFloat("iMin", iMin);
-  preferences.putFloat("iMax", iMax);
-  preferences.putFloat("tolerance", tolerance);
+  preferences.putDouble("Kp", Kp);
+  preferences.putDouble("Ki", Ki);
+  preferences.putDouble("Id", Kd);
+  preferences.putDouble("iMin", iMin);
+  preferences.putDouble("iMax", iMax);
+  preferences.putDouble("tolerance", tolerance);
   preferences.end();
 }
 
-void enableCommand(bool value)
+void enableCommand(bool command)
 {
-  enabled = value;
+  enabled = command;
 }
 
-void positionCommand(float command)
+void positionCommand(double command)
 {
-  mode = POSITION;
+  commandMode = POSITION;
   commandedPosition = command;
   enabled = true;
 }
 
 void velocityCommand(int command)
 {
-  mode = VELOCITY;
+  commandMode = VELOCITY;
   commandedVelocity = command;
   enabled = true;
 }
 
 void settingsCommand(const Settings& settings)
 {
-  // Reset mode
-  mode = MANUAL;
-
-  // Stop motor
+  // Reset motor
+  commandMode = MANUAL;
+  commandedVelocity = 0;
   writeMotorVelocity(0);
 
   // Apply settings
@@ -656,6 +684,32 @@ void settingsCommand(const Settings& settings)
   {
     current = settings.current;
     motorDriver.setRunCurrent(current);
+  }
+
+  if (controlMode != settings.controlMode)
+  {
+    controlMode = settings.controlMode;
+
+    if (controlMode == CURRENT_CONTROL)
+    {
+      motorDriver.enableAutomaticCurrentScaling();
+    }
+    else
+    {
+      motorDriver.disableAutomaticCurrentScaling();
+    }
+  }
+
+  if (holdCurrent != settings.holdCurrent)
+  {
+    holdCurrent = settings.holdCurrent;
+    motorDriver.setHoldCurrent(holdCurrent);
+  }
+
+  if (holdDelay != settings.holdDelay)
+  {
+    holdDelay = settings.holdDelay;
+    motorDriver.setHoldDelay(holdDelay);
   }
 
   if (microstepsPerStep != settings.microstepsPerStep)
@@ -704,9 +758,11 @@ void settingsCommand(const Settings& settings)
 void statusFeedback(Status& status)
 {
   status.name = name.c_str();
-  status.mode = mode;
+  status.commandMode = commandMode;
+  status.controlMode = controlMode;
   status.enabled = motorEnabled;
   status.powerGood = powerGood;
+  status.count = count;
   status.rawPosition = rawPositionWithRevolutions;
   status.position = position;
   status.velocity = commandedVelocity;
@@ -735,8 +791,11 @@ void velocityFeedback(int& velocity)
 void settingsFeedback(Settings& settings)
 {
   settings.name = name.c_str();
+  settings.controlMode = controlMode;
   settings.voltage = voltage;
   settings.current = current;
+  settings.holdCurrent = holdCurrent;
+  settings.holdDelay = holdDelay;
   settings.microstepsPerStep = microstepsPerStep;
   settings.stallThreshold = stallThreshold;
   settings.standstillMode = standstillMode;

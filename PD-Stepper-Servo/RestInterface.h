@@ -26,10 +26,22 @@
 // Constants
 //
 
-const char* const MODE_DESCRIPTION[] = {
+const char* const COMMAND_MODE_DESCRIPTION[] = {
   "manual",
   "velocity",
   "position"
+};
+
+const char* const CONTROL_MODE_DESCRIPTION[] = {
+  "voltage",
+  "current"
+};
+
+const char* const STANDSTILL_MODE_DESCRIPTION[] = {
+  "normal",
+  "freewheeling",
+  "strongBraking",
+  "braking"
 };
 
 //
@@ -43,6 +55,7 @@ AsyncWebServer* pServer = NULL;
 //
 
 void deserializeRequestJson(JsonDocument& doc, uint8_t* data, size_t len);
+int deserializeEnum(const char* value, const char* const* values, int count);
 
 //
 // Functions
@@ -70,6 +83,9 @@ void initRestInterface(
     delay(500);
   }
 
+  Serial.print("Connected as ");
+  Serial.println(WiFi.localIP());
+
   // Create server
   pServer = new AsyncWebServer(port);
 
@@ -81,9 +97,11 @@ void initRestInterface(
 
     JsonDocument doc;
     doc["name"] = status.name;
-    doc["mode"] = MODE_DESCRIPTION[status.mode];
+    doc["commandMode"] = COMMAND_MODE_DESCRIPTION[status.commandMode];
+    doc["controlMode"] = CONTROL_MODE_DESCRIPTION[status.controlMode];
     doc["enabled"] = status.enabled;
     doc["powerGood"] = status.powerGood;
+    doc["count"] = status.count;
     doc["rawPosition"] = status.rawPosition;
     doc["position"] = status.position;
     doc["velocity"] = status.velocity;
@@ -108,11 +126,14 @@ void initRestInterface(
 
     JsonDocument doc;
     doc["name"] = settings.name;
+    doc["controlMode"] = CONTROL_MODE_DESCRIPTION[settings.controlMode];
+    doc["standstillMode"] = STANDSTILL_MODE_DESCRIPTION[settings.standstillMode];
     doc["voltage"] = settings.voltage;
     doc["current"] = settings.current;
+    doc["holdCurrent"] = settings.holdCurrent;
+    doc["holdDelay"] = settings.holdDelay;
     doc["microstepsPerStep"] = settings.microstepsPerStep;
     doc["stallThreshold"] = settings.stallThreshold;
-    doc["standstillMode"] = settings.standstillMode;
     doc["coolStepDurationThreshold"] = settings.coolStepDurationThreshold;
     doc["buttonVelocity"] = settings.buttonVelocity;
     doc["encoderMin"] = settings.encoderMin;
@@ -186,7 +207,7 @@ void initRestInterface(
     JsonDocument doc;
     deserializeRequestJson(doc, data, len);
   
-    float position = doc["position"].as<float>();
+    double position = doc["position"].as<double>();
     positionCommand(position);
 
     request->send(200);
@@ -212,25 +233,34 @@ void initRestInterface(
 
     Settings settings;
     settings.name = doc["name"];
+    settings.controlMode = (CONTROL_MODE)deserializeEnum(
+      doc["controlMode"],
+      CONTROL_MODE_DESCRIPTION,
+      sizeof(CONTROL_MODE_DESCRIPTION) / sizeof(char*));
+    settings.standstillMode = (STANDSTILL)deserializeEnum(
+      doc["standstillMode"],
+      STANDSTILL_MODE_DESCRIPTION,
+      sizeof(STANDSTILL_MODE_DESCRIPTION) / sizeof(char*));
     settings.voltage = (VOLTAGE)doc["voltage"].as<int>();
     settings.current = doc["current"].as<int>();
+    settings.holdCurrent = doc["holdCurrent"].as<int>();
+    settings.holdDelay = doc["holdDelay"].as<int>();
     settings.microstepsPerStep = (MICROSTEPS)doc["microstepsPerStep"].as<int>();
     settings.stallThreshold = doc["stallThreshold"].as<int>();
-    settings.standstillMode = doc["standstillMode"].as<STANDSTILL>();
     settings.coolStepDurationThreshold = doc["coolStepDurationThreshold"].as<int>();
     settings.buttonVelocity = doc["buttonVelocity"].as<int>();
     settings.encoderMin = doc["encoderMin"].as<int>();
     settings.encoderMax = doc["encoderMax"].as<int>();
-    settings.positionMin = doc["positionMin"].as<float>();
-    settings.positionMax = doc["positionMax"].as<float>();
+    settings.positionMin = doc["positionMin"].as<double>();
+    settings.positionMax = doc["positionMax"].as<double>();
     settings.velocityMin = doc["velocityMin"].as<int>();
     settings.velocityMax = doc["velocityMax"].as<int>();
-    settings.Kp = doc["Kp"].as<float>();
-    settings.Ki = doc["Ki"].as<float>();
-    settings.Kd = doc["Kd"].as<float>();
-    settings.iMin = doc["iMin"].as<float>();
-    settings.iMax = doc["iMax"].as<float>();
-    settings.tolerance = doc["tolerance"].as<float>();
+    settings.Kp = doc["Kp"].as<double>();
+    settings.Ki = doc["Ki"].as<double>();
+    settings.Kd = doc["Kd"].as<double>();
+    settings.iMin = doc["iMin"].as<double>();
+    settings.iMax = doc["iMax"].as<double>();
+    settings.tolerance = doc["tolerance"].as<double>();
 
     settingsCommand(settings);
 
@@ -244,4 +274,17 @@ void deserializeRequestJson(JsonDocument& doc, uint8_t* data, size_t len)
 {
   String json = String((char*)data).substring(0, len);
   deserializeJson(doc, json);
+}
+
+int deserializeEnum(const char* value, const char* const* values, int count)
+{
+  for (int n = 0; n < count; n++)
+  {
+    if (strcmp(value, values[n]) == 0)
+    {
+      return n;
+    }
+  }
+
+  return 0;
 }

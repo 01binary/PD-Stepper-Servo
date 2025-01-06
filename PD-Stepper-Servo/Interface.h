@@ -10,11 +10,17 @@
 // Constants
 //
 
-enum MODE
+enum COMMAND_MODE
 {
   MANUAL,     // Manual control via buttons
   VELOCITY,   // Velocity command (microsteps)
   POSITION    // PID with position command
+};
+
+enum CONTROL_MODE
+{
+  VOLTAGE_CONTROL,
+  CURRENT_CONTROL
 };
 
 enum VOLTAGE
@@ -54,16 +60,18 @@ struct Status
 {
   const char* name;
 
-  MODE mode;
+  COMMAND_MODE commandMode;
+  CONTROL_MODE controlMode;
   bool enabled;
   bool powerGood;
 
+  int count;
   int rawPosition;
-  float position;
+  double position;
 
   int velocity;
 
-  float voltage;
+  double voltage;
   int current;
 
   bool overTemp;
@@ -74,38 +82,42 @@ struct Status
 
 struct PositionFeedback
 {
-  float goal;
-  float position;
-  float error;
-  float integralError;
-  float derivativeError;
+  double goal;
+  double position;
+  double error;
+  double integralError;
+  double derivativeError;
 };
 
 struct Settings
 {
   const char* name;
 
+  CONTROL_MODE controlMode;
   VOLTAGE voltage;
   int current;
+  int holdCurrent;
+  int holdDelay;
   MICROSTEPS microstepsPerStep;
   int stallThreshold;
   STANDSTILL standstillMode;
   int coolStepDurationThreshold;
   int buttonVelocity;
 
+  int count;
   int encoderMin;
   int encoderMax;
-  float positionMin;
-  float positionMax;
+  double positionMin;
+  double positionMax;
   int velocityMin;
   int velocityMax;
 
-  float Kp;
-  float Ki;
-  float Kd;
-  float iMin;
-  float iMax;
-  float tolerance;
+  double Kp;
+  double Ki;
+  double Kd;
+  double iMin;
+  double iMax;
+  double tolerance;
 };
 
 //
@@ -113,7 +125,7 @@ struct Settings
 //
 
 typedef void (*EnableCommandPtr)(bool);
-typedef void (*PositionCommandPtr)(float);
+typedef void (*PositionCommandPtr)(double);
 typedef void (*VelocityCommandPtr)(int);
 typedef void (*SettingsCommandPtr)(const Settings&);
 typedef void (*StatusFeedbackPtr)(Status&);
