@@ -10,20 +10,20 @@
 // Constants
 //
 
-enum COMMAND_MODE
+enum COMMAND            // High-level command modes
 {
-  MANUAL,     // Manual control via buttons
-  VELOCITY,   // Velocity command (microsteps)
-  POSITION    // PID with position command
+  MANUAL,               // Manual control via buttons
+  VELOCITY,             // Direct velocity command
+  POSITION              // PID with position command
 };
 
-enum CONTROL_MODE
+enum CONTROL            // Low-level control modes
 {
-  VOLTAGE_CONTROL,
-  CURRENT_CONTROL
+  VOLTAGE_CONTROL,      // Controlled by voltage, current unregulated
+  CURRENT_CONTROL       // Controlled by voltage, current regulated
 };
 
-enum VOLTAGE
+enum VOLTAGE            // Supported USB voltages
 {
   VOLTAGE_5V = 5,
   VOLTAGE_9V = 9,
@@ -32,15 +32,15 @@ enum VOLTAGE
   VOLTAGE_20V = 20
 };
 
-enum STANDSTILL
+enum STANDSTILL         // Standstill operation
 {
-  NORMAL = 0,
-  FREEWHEELING = 1,
-  STRONG_BRAKING = 2,
-  BRAKING = 3
+  NORMAL = 0,           // Same as braking
+  FREEWHEELING = 1,     // No braking
+  STRONG_BRAKING = 2,   // Strong braking
+  BRAKING = 3           // Normal braking
 };
 
-enum MICROSTEPS
+enum MICROSTEPS         // Supported velocity command resolutions
 {
   MICROSTEPS_1 = 1,
   MICROSTEPS_4 = 4,
@@ -58,48 +58,48 @@ enum MICROSTEPS
 
 struct Status
 {
-  const char* name;
+  const char* name;         // Controller name
 
-  COMMAND_MODE commandMode;
-  CONTROL_MODE controlMode;
-  bool enabled;
-  bool powerGood;
+  COMMAND commandMode;      // High-level command mode
+  CONTROL controlMode;      // Low-level control mode
+  bool enabled;             // Motor enabled
+  bool powerGood;           // Voltage negotiated
 
-  int count;
-  int rawPosition;
-  int revolutions;
-  double position;
+  int count;                // Microstep counter (relative encoder)
+  int rawPosition;          // Absolute encoder position
+  int revolutions;          // Absolute encoder revolutions
+  double position;          // Scaled encoder position
 
-  int velocity;
+  int velocity;             // Current velocity
 
-  double voltage;
-  int current;
+  double voltage;           // Actual voltage
+  int current;              // Run at current %
 
-  bool overTemp;
-  bool overTempShutdown;
-  unsigned int stallGuard;
-  bool stalled;
+  bool overTemp;            // Over temperature warning
+  bool overTempShutdown;    // Shutdown warning
+  unsigned int stallGuard;  // Recommended stall guard threshold
+  bool stalled;             // Stall detected
 };
 
 struct PositionFeedback
 {
-  double goal;
-  double position;
-  double error;
-  double tolerance;
-  double integralError;
-  double derivativeError;
-  double proportional;
-  double integral;
-  double derivative;
-  int command;
+  double goal;              // Commanded position
+  double position;          // Scaled position from absolute encoder
+  double error;             // Proportional error
+  double tolerance;         // Position command tolerance
+  double integralError;     // Integral error
+  double derivativeError;   // Derivative error
+  double proportional;      // Proportional term
+  double integral;          // Integral term
+  double derivative;        // Derivative term
+  int command;              // Commanded velocity (all terms added)
 };
 
 struct Settings
 {
   const char* name;
 
-  CONTROL_MODE controlMode;
+  CONTROL controlMode;
   VOLTAGE voltage;
   int current;
   int holdCurrent;

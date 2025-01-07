@@ -26,13 +26,13 @@
 // Constants
 //
 
-const char* const COMMAND_MODE_DESCRIPTION[] = {
+const char* const COMMAND_DESCRIPTION[] = {
   "manual",
   "velocity",
   "position"
 };
 
-const char* const CONTROL_MODE_DESCRIPTION[] = {
+const char* const CONTROL_DESCRIPTION[] = {
   "voltage",
   "current"
 };
@@ -97,8 +97,8 @@ void initRestInterface(
 
     JsonDocument doc;
     doc["name"] = status.name;
-    doc["commandMode"] = COMMAND_MODE_DESCRIPTION[status.commandMode];
-    doc["controlMode"] = CONTROL_MODE_DESCRIPTION[status.controlMode];
+    doc["commandMode"] = COMMAND_DESCRIPTION[status.commandMode];
+    doc["controlMode"] = CONTROL_DESCRIPTION[status.controlMode];
     doc["enabled"] = status.enabled;
     doc["powerGood"] = status.powerGood;
     doc["count"] = status.count;
@@ -127,7 +127,7 @@ void initRestInterface(
 
     JsonDocument doc;
     doc["name"] = settings.name;
-    doc["controlMode"] = CONTROL_MODE_DESCRIPTION[settings.controlMode];
+    doc["controlMode"] = CONTROL_DESCRIPTION[settings.controlMode];
     doc["standstillMode"] = STANDSTILL_MODE_DESCRIPTION[settings.standstillMode];
     doc["voltage"] = settings.voltage;
     doc["current"] = settings.current;
@@ -239,10 +239,10 @@ void initRestInterface(
 
     Settings settings;
     settings.name = doc["name"];
-    settings.controlMode = (CONTROL_MODE)deserializeEnum(
+    settings.controlMode = (CONTROL)deserializeEnum(
       doc["controlMode"],
-      CONTROL_MODE_DESCRIPTION,
-      sizeof(CONTROL_MODE_DESCRIPTION) / sizeof(char*));
+      CONTROL_DESCRIPTION,
+      sizeof(CONTROL_DESCRIPTION) / sizeof(char*));
     settings.standstillMode = (STANDSTILL)deserializeEnum(
       doc["standstillMode"],
       STANDSTILL_MODE_DESCRIPTION,

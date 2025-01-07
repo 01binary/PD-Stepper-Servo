@@ -67,7 +67,7 @@ const int BRD_SW3 = 37;                   // Increment button
 
 // Controller State
 
-COMMAND_MODE commandMode = MANUAL;        // Manual, velocity or position
+COMMAND commandMode = MANUAL;        // Manual, velocity or position
 bool enabled = false;                     // Enable motor
 int commandedVelocity = 0;                // Velocity command
 double commandedPosition = 0;             // Position command (also sets Velocity command)
@@ -124,14 +124,12 @@ unsigned int count = 0;                   // Microstep counter
 
 // Stepper Settings
 
-CONTROL_MODE controlMode =
-  CURRENT_CONTROL;                        // Driver PWM control mode
+CONTROL controlMode = CURRENT_CONTROL;    // Driver PWM control mode
 int current = 30;                         // Run current % if current controlled
 int holdCurrent = 30;                     // Hold current % if current controlled
 int holdDelay = 0;                        // Hold delay cycles
-MICROSTEPS microstepsPerStep =
-  MICROSTEPS_32;                          // Velocity resolution
-STANDSTILL standstillMode = NORMAL;
+MICROSTEPS microsteps = MICROSTEPS_32;    // Velocity resolution
+STANDSTILL standstillMode = NORMAL;       // What happens when velocity set to zero
 int stallThreshold = 70;                  // Stall threshold
 int coolStepDurationThreshold = 5000;     // CoolStep activation threshold
 
@@ -445,7 +443,7 @@ void initMotor()
     motorDriver.disableAutomaticCurrentScaling();
   }
 
-  motorDriver.setMicrostepsPerStep((int)microstepsPerStep);
+  motorDriver.setMicrostepsPerStep((int)microsteps);
   motorDriver.setStallGuardThreshold(stallThreshold);
   motorDriver.setStandstillMode((TMC2209::StandstillMode)standstillMode);
   motorDriver.enableStealthChop();
@@ -467,7 +465,7 @@ void writeMotorEnabled(bool enabled)
 
 void writeMotorVelocity(int velocity)
 {
-  motorDriver.moveAtVelocity(velocity * microstepsPerStep);
+  motorDriver.moveAtVelocity(velocity * microsteps);
 }
 
 void readMotor()
@@ -588,12 +586,12 @@ void readSettings()
 {
   preferences.begin("settings", false);
   name = preferences.getString("name", name);
-  controlMode = (CONTROL_MODE)preferences.getInt("controlMode", (int)controlMode);
+  controlMode = (CONTROL)preferences.getInt("controlMode", (int)controlMode);
   voltage = (VOLTAGE)preferences.getInt("voltage", voltage);
   current = preferences.getInt("current", current);
   holdCurrent = preferences.getInt("holdCurrent", holdCurrent);
   holdDelay = preferences.getInt("holdDelay", holdDelay);
-  microstepsPerStep = (MICROSTEPS)preferences.getInt("microstepsPerStep", (int)microstepsPerStep);
+  microsteps = (MICROSTEPS)preferences.getInt("microstepsPerStep", (int)microsteps);
   stallThreshold = preferences.getInt("stallThreshold", stallThreshold);
   standstillMode = (STANDSTILL)preferences.getInt("standstillMode", (int)standstillMode);
   coolStepDurationThreshold = preferences.getInt("coolStepDurationThreshold", coolStepDurationThreshold);
@@ -622,7 +620,7 @@ void writeSettings()
   preferences.putInt("current", current);
   preferences.putInt("holdCurrent", holdCurrent);
   preferences.putInt("holdDelay", holdDelay);
-  preferences.putInt("microstepsPerStep", microstepsPerStep);
+  preferences.putInt("microstepsPerStep", microsteps);
   preferences.putInt("stallThreshold", stallThreshold);
   preferences.putInt("standstillMode", (int)standstillMode);
   preferences.putInt("coolStepDurationThreshold", coolStepDurationThreshold);
@@ -712,10 +710,10 @@ void settingsCommand(const Settings& settings)
     motorDriver.setHoldDelay(holdDelay);
   }
 
-  if (microstepsPerStep != settings.microstepsPerStep)
+  if (microsteps != settings.microstepsPerStep)
   {
-    microstepsPerStep = settings.microstepsPerStep;
-    motorDriver.setMicrostepsPerStep((int)microstepsPerStep);
+    microsteps = settings.microstepsPerStep;
+    motorDriver.setMicrostepsPerStep((int)microsteps);
   }
 
   if (stallThreshold != settings.stallThreshold)
@@ -802,7 +800,7 @@ void settingsFeedback(Settings& settings)
   settings.current = current;
   settings.holdCurrent = holdCurrent;
   settings.holdDelay = holdDelay;
-  settings.microstepsPerStep = microstepsPerStep;
+  settings.microstepsPerStep = microsteps;
   settings.stallThreshold = stallThreshold;
   settings.standstillMode = standstillMode;
   settings.buttonVelocity = buttonVelocity;
