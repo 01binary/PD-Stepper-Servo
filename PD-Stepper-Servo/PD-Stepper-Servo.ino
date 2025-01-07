@@ -7,12 +7,12 @@
 // Includes
 //
 
-#include "freertos/FreeRTOS.h"          // Multi-threading
-#include <TMC2209.h>                    // TMC2209 Stepper Motor Driver
-#include <Wire.h>                       // AS5600 Hall Effect Encoder
-#include <Preferences.h>                // Flash memory
-#include "Interface.h"                  // Enable switching interfaces
-#include "RestInterface.h"              // REST API interface
+#include "freertos/FreeRTOS.h"            // Multi-threading
+#include <TMC2209.h>                      // TMC2209 Stepper Motor Driver
+#include <Wire.h>                         // AS5600 Hall Effect Encoder
+#include <Preferences.h>                  // Flash memory
+#include "Interface.h"                    // Enable switching interfaces
+#include "RestInterface.h"                // REST API interface
 
 //
 // Constants
@@ -51,7 +51,7 @@ const int PD_VBUS = 4;                    // Voltage analog pin
 const int PD_CFG1 = 38;                   // Voltage select pin 1
 const int PD_CFG2 = 48;                   // Voltage select pin 2
 const int PD_CFG3 = 47;                   // Voltage select pin 3
-const double PD_VOLTAGE_MUL =6.7735e-03;  // Voltage conversion multiplier
+const double PD_VOLTAGE_MUL = 6.7735e-03; // Voltage conversion multiplier
 
 // PD Stepper Board
 
@@ -67,7 +67,7 @@ const int BRD_SW3 = 37;                   // Increment button
 
 // Controller State
 
-COMMAND commandMode = MANUAL;        // Manual, velocity or position
+COMMAND commandMode = MANUAL;             // Manual, velocity or position
 bool enabled = false;                     // Enable motor
 int commandedVelocity = 0;                // Velocity command
 double commandedPosition = 0;             // Position command (also sets Velocity command)
