@@ -7,26 +7,12 @@
 // Includes
 //
 
-// Multi-threading
-
-#include "freertos/FreeRTOS.h"
-
-// TMC2209 Stepper Motor Driver
-
-#include <TMC2209.h>
-
-// AS5600 Hall Effect Encoder
-
-#include <Wire.h>
-
-// Flash memory
-
-#include <Preferences.h>
-
-// Interface
-
-#include "Interface.h"
-#include "RestInterface.h"
+#include "freertos/FreeRTOS.h"          // Multi-threading
+#include <TMC2209.h>                    // TMC2209 Stepper Motor Driver
+#include <Wire.h>                       // AS5600 Hall Effect Encoder
+#include <Preferences.h>                // Flash memory
+#include "Interface.h"                  // Enable switching interfaces
+#include "RestInterface.h"              // REST API interface
 
 //
 // Constants
@@ -34,122 +20,126 @@
 
 // Controller
 
-const int RATE_HZ = 50;
-const int TIMESTEP_MS = 1000 / RATE_HZ;
-const double TIMESTEP = 1.0 / RATE_HZ;
-const int BUTTON_DEBOUNCE_MS = 50;
-const int STARTUP_DELAY_MS = 200;
+const int RATE_HZ = 50;                   // Frequency
+const int TIMESTEP_MS = 1000 / RATE_HZ;   // Time step in ms
+const double TIMESTEP = 1.0 / RATE_HZ;    // Time step in seconds
+const int BUTTON_DEBOUNCE_MS = 50;        // Button debounce time ms
+const int STARTUP_DELAY_MS = 200;         // Startup delay time ms
 
 // Encoder
 
-const int AS5600_ADDRESS = 0x36;
-const int AS5600_ANGLE_REGISTER = 0x0C;
-const int AS5600_MAX = 4096;
+const int AS5600_ADDRESS = 0x36;          // Encoder I2C address
+const int AS5600_ANGLE_REGISTER = 0x0C;   // Encoder angle register
+const int AS5600_MAX = 4096;              // Encoder max angle value
 
 // Stepper driver
 
-const long TMC_SERIAL_BAUD_RATE = 115200;
-const int TMC_ENABLED = 21;
-const int TMC_STEP = 5;
-const int TMC_DIR = 6;
-const int TMC_MS1 = 1;
-const int TMC_MS2 = 2;
-const int TMC_SPREAD = 7;
-const int TMC_TX = 17;
-const int TMC_RX = 18;
-const int TMC_OVERCURRENT = 16;
-const int TMC_INDEX = 11;
+const long TMC_RATE = 115200;             // Serial baud rate
+const int TMC_ENABLED = 21;               // Enabled pin
+const int TMC_STEP = 5;                   // Step pin
+const int TMC_DIR = 6;                    // Direction pin
+const int TMC_MS1 = 1;                    // Address select pin 1
+const int TMC_MS2 = 2;                    // Address select pin 2
+const int TMC_TX = 17;                    // UART TX pin
+const int TMC_RX = 18;                    // UART RX pin
+const int TMC_OVERCURRENT = 16;           // Overcurrent pin
 
 // USB Power Delivery
 
-const int PD_POWERGOOD = 15;
-const int PD_VBUS = 4;
-const int PD_CFG1 = 38;
-const int PD_CFG2 = 48;
-const int PD_CFG3 = 47;
-const double PD_VREF = 3.3;
-const double PD_DIV = 0.1189427313;
-const double PD_VOLTAGE_MULTIPLIER = PD_VREF / 4096.0 / PD_DIV;
+const int PD_POWERGOOD = 15;              // Power good pin
+const int PD_VBUS = 4;                    // Voltage analog pin
+const int PD_CFG1 = 38;                   // Voltage select pin 1
+const int PD_CFG2 = 48;                   // Voltage select pin 2
+const int PD_CFG3 = 47;                   // Voltage select pin 3
+const double PD_VOLTAGE_MUL =6.7735e-03;  // Voltage conversion multiplier
 
 // PD Stepper Board
 
-const int BRD_NTC = 7;
-const int BRD_LED1 = 10;
-const int BRD_LED2 = 12;
-const int BRD_SW1 = 35;
-const int BRD_SW2 = 36;
-const int BRD_SW3 = 37;
-const int BRD_AUX1 = 14;
-const int BRD_AUX2 = 13;
+const int BRD_LED1 = 10;                  // Info/Warning LED
+const int BRD_LED2 = 12;                  // Error LED
+const int BRD_SW1 = 35;                   // Decrement button
+const int BRD_SW2 = 36;                   // Stop button
+const int BRD_SW3 = 37;                   // Increment button
 
 //
 // Variables
 //
 
-// Controller
+// Controller State
 
-COMMAND_MODE commandMode = MANUAL;
-bool enabled = false;
-int commandedVelocity = 0;
-double commandedPosition = 0;
-double proportionalError = 0;
-double integralError = 0;
-double derivativeError = 0;
-double proportional = 0;
-double integral = 0;
-double derivative = 0;
-bool incrementButtonPushed = false;
-bool decrementButtonPushed = false;
-bool resetButtonPushed = false;
-unsigned long lastDebounceTime = 0;
+COMMAND_MODE commandMode = MANUAL;        // Manual, velocity or position
+bool enabled = false;                     // Enable motor
+int commandedVelocity = 0;                // Velocity command
+double commandedPosition = 0;             // Position command (also sets Velocity command)
+double proportionalError = 0;             // PID Proportional error
+double integralError = 0;                 // PID Integral error
+double derivativeError = 0;               // PID Derivative error
+double proportional = 0;                  // PID Proportional component
+double integral = 0;                      // PID Integral component
+double derivative = 0;                    // PID Derivative component
+bool incrementButtonPushed = false;       // Increment button state
+bool decrementButtonPushed = false;       // Decrement button state
+bool resetButtonPushed = false;           // Stop button state
+unsigned long lastDebounceTime = 0;       // Last button debounce time
 
-Preferences preferences;
-String name = "PD-Stepper";
-double tolerance = 0.1;
-double Kp = 100;
-double Ki = 10;
-double Kd = 10;
-double iMin = -10;
-double iMax = 10;
-int velocityMin = 5;
-int velocityMax = 1440;
-int buttonVelocity = 30;
+// Controller Settings
 
-// Encoder
+Preferences preferences;                  // Used to save settings to flash
+String name = "PD-Stepper";               // Controller name, since several can be connected
+double tolerance = 0.1;                   // Position command success tolerance
+double Kp = 100;                          // PID Proportional gain
+double Ki = 10;                           // PID Integral gain
+double Kd = 10;                           // PID Derivative gain
+double iMin = -10;                        // PID Integral min
+double iMax = 10;                         // PID Integral max
+int velocityMin = 5;                      // PID min velocity
+int velocityMax = 1440;                   // PID max velocity
+int buttonVelocity = 30;                  // Manual control velocity
 
-int rawPosition = -1;
-int revolutions = 0;
-int encoderMin = 0;
-int encoderMax = AS5600_MAX;
-double positionMin = 0.0;
-double positionMax = 1.0;
-double position = 0.0;
+// Encoder State
 
-// Stepper Driver
+int rawPosition = -1;                     // Raw encoder position
+int revolutions = 0;                      // Revolutions from home
+double position = 0.0;                    // Scaled encoder position
 
-TMC2209 motorDriver;
-HardwareSerial &motorSerial = Serial2;
-CONTROL_MODE controlMode = CURRENT_CONTROL;
-bool motorState = false;
-bool motorEnabled = true;
-bool motorOverTemp = false;
-bool motorOverTempShutdown = false;
-bool motorStalled = false;
-unsigned int motorStallGuard = 0;
-unsigned int count = 0;
-VOLTAGE voltage = VOLTAGE_5V;
-int current = 30;
-int holdCurrent = 30;
-int holdDelay = 0;
-MICROSTEPS microstepsPerStep = MICROSTEPS_32;
+// Encoder Mapping
+// raw           normalized                   scaled
+// [0...4096] -> [encoderMin...encoderMax] -> [positionMin...positionMax]
+
+int encoderMin = 0;                       // Normalized position min
+int encoderMax = AS5600_MAX;              // Normalized position max
+double positionMin = 0.0;                 // Scaled position min
+double positionMax = 1.0;                 // Scaled position max
+
+// Stepper State
+
+TMC2209 motorDriver;                      // Driver interface
+HardwareSerial &motorSerial = Serial2;    // Serial port for communication
+bool motorEnabled = true;                 // Motor enabled
+bool motorOverTemp = false;               // Motor overheated
+bool motorOverTempShutdown = false;       // Motor shutdown
+bool motorStalled = false;                // Motor stalled
+unsigned int motorStallGuard = 0;         // Recommended stall threshold
+unsigned int count = 0;                   // Microstep counter
+
+// Stepper Settings
+
+CONTROL_MODE controlMode =
+  CURRENT_CONTROL;                        // Driver PWM control mode
+int current = 30;                         // Run current % if current controlled
+int holdCurrent = 30;                     // Hold current % if current controlled
+int holdDelay = 0;                        // Hold delay cycles
+MICROSTEPS microstepsPerStep =
+  MICROSTEPS_32;                          // Velocity resolution
 STANDSTILL standstillMode = NORMAL;
-int stallThreshold = 70;
-int coolStepDurationThreshold = 5000;
+int stallThreshold = 70;                  // Stall threshold
+int coolStepDurationThreshold = 5000;     // CoolStep activation threshold
 
 // Power Delivery
 
-bool powerGood = false;
-double busVoltage = 0;
+VOLTAGE voltage = VOLTAGE_5V;             // Voltage to negotiate
+bool powerGood = false;                   // Configured voltage available
+double busVoltage = 0;                    // Actual voltage in volts
 
 //
 // Forward Declarations
@@ -222,6 +212,7 @@ void initController()
   xTaskCreate(controller, "MotorControl", 2048, NULL, configMAX_PRIORITIES - 1, NULL);
 }
 
+// Manual control via buttons
 bool manualControl()
 {
   if (incrementButtonPushed)
@@ -261,6 +252,7 @@ bool manualControl()
   return false;
 }
 
+// Enable driver when power delivery configured
 bool powerEnabled()
 {
   if (!powerGood && motorEnabled)
@@ -273,6 +265,7 @@ bool powerEnabled()
   return true;
 }
 
+// Velocity and Position control
 void controller(void *pvParameters)
 {
   const TickType_t freq = pdMS_TO_TICKS(TIMESTEP_MS);
@@ -387,7 +380,7 @@ void initPower()
 
 void readPower()
 {
-  busVoltage = analogRead(PD_VBUS) * PD_VOLTAGE_MULTIPLIER;
+  busVoltage = analogRead(PD_VBUS) * PD_VOLTAGE_MUL;
   powerGood = digitalRead(PD_POWERGOOD) == LOW;
 }
 
@@ -439,19 +432,19 @@ void initMotor()
   digitalWrite(TMC_MS2, LOW);
 
   // Initialize motor driver
-  motorDriver.setup(motorSerial, TMC_SERIAL_BAUD_RATE, TMC2209::SERIAL_ADDRESS_0, TMC_RX, TMC_TX);
+  motorDriver.setup(motorSerial, TMC_RATE, TMC2209::SERIAL_ADDRESS_0, TMC_RX, TMC_TX);
   motorDriver.setHardwareEnablePin(TMC_ENABLED);
 
   if (controlMode == CURRENT_CONTROL)
   {
     motorDriver.enableAutomaticCurrentScaling();
+    motorDriver.setRunCurrent(current);
   }
   else
   {
     motorDriver.disableAutomaticCurrentScaling();
   }
 
-  motorDriver.setRunCurrent(current);
   motorDriver.setMicrostepsPerStep((int)microstepsPerStep);
   motorDriver.setStallGuardThreshold(stallThreshold);
   motorDriver.setStandstillMode((TMC2209::StandstillMode)standstillMode);
@@ -479,11 +472,19 @@ void writeMotorVelocity(int velocity)
 
 void readMotor()
 {
+  // Motor enabled
   motorEnabled = !motorDriver.hardwareDisabled();
+
+  // Stall detection via current sensing
   motorStalled = digitalRead(TMC_OVERCURRENT);
+
+  // Recommended stall threshold at current velocity
   motorStallGuard = motorDriver.getStallGuardResult();
+
+  // Internal microstep counter (acts like built-in quadrature encoder)
   count = motorDriver.getMicrostepCounter();
 
+  // Motor status
   TMC2209::Status status = motorDriver.getStatus();
   motorOverTemp = status.over_temperature_warning;
   motorOverTempShutdown = status.over_temperature_shutdown;
