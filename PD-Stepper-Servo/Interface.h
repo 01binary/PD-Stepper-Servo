@@ -67,6 +67,7 @@ struct Status
 
   int count;
   int rawPosition;
+  int revolutions;
   double position;
 
   int velocity;
@@ -85,8 +86,13 @@ struct PositionFeedback
   double goal;
   double position;
   double error;
+  double tolerance;
   double integralError;
   double derivativeError;
+  double proportional;
+  double integral;
+  double derivative;
+  int command;
 };
 
 struct Settings

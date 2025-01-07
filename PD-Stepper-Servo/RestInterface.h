@@ -103,6 +103,7 @@ void initRestInterface(
     doc["powerGood"] = status.powerGood;
     doc["count"] = status.count;
     doc["rawPosition"] = status.rawPosition;
+    doc["revolutions"] = status.revolutions;
     doc["position"] = status.position;
     doc["velocity"] = status.velocity;
     doc["voltage"] = status.voltage;
@@ -180,8 +181,13 @@ void initRestInterface(
     doc["goal"] = feedback.goal;
     doc["position"] = feedback.position;
     doc["error"] = feedback.error;
+    doc["tolerance"] = feedback.tolerance;
     doc["integralError"] = feedback.integralError;
     doc["derivativeError"] = feedback.derivativeError;
+    doc["proportional"] = feedback.proportional;
+    doc["integral"] = feedback.integral;
+    doc["derivative"] = feedback.derivative;
+    doc["command"] = feedback.command;
 
     String res;
     serializeJson(doc, res);

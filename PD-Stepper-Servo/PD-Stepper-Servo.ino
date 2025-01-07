@@ -86,22 +86,22 @@ const int BRD_AUX2 = 13;
 // Variables
 //
 
-// State
+// Controller
 
 COMMAND_MODE commandMode = MANUAL;
-CONTROL_MODE controlMode = CURRENT_CONTROL;
 bool enabled = false;
 int commandedVelocity = 0;
 double commandedPosition = 0;
 double proportionalError = 0;
 double integralError = 0;
 double derivativeError = 0;
+double proportional = 0;
+double integral = 0;
+double derivative = 0;
 bool incrementButtonPushed = false;
 bool decrementButtonPushed = false;
 bool resetButtonPushed = false;
 unsigned long lastDebounceTime = 0;
-
-// Controller
 
 Preferences preferences;
 String name = "PD-Stepper";
@@ -119,7 +119,6 @@ int buttonVelocity = 30;
 
 int rawPosition = -1;
 int revolutions = 0;
-int rawPositionWithRevolutions = 0;
 int encoderMin = 0;
 int encoderMax = AS5600_MAX;
 double positionMin = 0.0;
@@ -130,6 +129,7 @@ double position = 0.0;
 
 TMC2209 motorDriver;
 HardwareSerial &motorSerial = Serial2;
+CONTROL_MODE controlMode = CURRENT_CONTROL;
 bool motorState = false;
 bool motorEnabled = true;
 bool motorOverTemp = false;
@@ -330,10 +330,10 @@ void controller(void *pvParameters)
       proportionalError = error;
 
       // Calculate proportional contribution
-      double proportional = Kp * proportionalError;
+      proportional = Kp * proportionalError;
 
       // Calculate integral contribution
-      double integral = Ki * integralError;
+      integral = Ki * integralError;
 
       if (limitIntegralError)
       {
@@ -341,7 +341,7 @@ void controller(void *pvParameters)
       }
 
       // Calculate derivative contribution
-      double derivative = Kd * derivativeError;
+      derivative = Kd * derivativeError;
 
       // Calculate command
       int rawCommand = int(proportional + integral + derivative);
@@ -573,11 +573,10 @@ void readEncoder()
   }
 
   rawPosition = reading;
-  rawPositionWithRevolutions = rawPosition + AS5600_MAX * revolutions;
 
   // Calculate normalized position
   double norm = 
-    double(constrain(rawPositionWithRevolutions, encoderMin, encoderMax) - encoderMin)
+    double(constrain(rawPosition, encoderMin, encoderMax) - encoderMin)
     / double(encoderMax - encoderMin);
 
   // Scale to final position range
@@ -763,7 +762,8 @@ void statusFeedback(Status& status)
   status.enabled = motorEnabled;
   status.powerGood = powerGood;
   status.count = count;
-  status.rawPosition = rawPositionWithRevolutions;
+  status.rawPosition = rawPosition;
+  status.revolutions = revolutions;
   status.position = position;
   status.velocity = commandedVelocity;
   status.voltage = busVoltage;
@@ -779,8 +779,13 @@ void positionFeedback(PositionFeedback& feedback)
   feedback.goal = commandedPosition;
   feedback.position = position;
   feedback.error = proportionalError;
+  feedback.tolerance = tolerance;
   feedback.integralError = integralError;
   feedback.derivativeError = derivativeError;
+  feedback.proportional = proportional;
+  feedback.integral = integral;
+  feedback.derivative = derivative;
+  feedback.command = commandedVelocity;
 }
 
 void velocityFeedback(int& velocity)
