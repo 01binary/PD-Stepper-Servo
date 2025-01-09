@@ -25,11 +25,11 @@ enum CONTROL            // Low-level control modes
 
 enum VOLTAGE            // Supported USB voltages
 {
-  VOLTAGE_5V = 5,
-  VOLTAGE_9V = 9,
-  VOLTAGE_12V = 12,
-  VOLTAGE_15V = 15,
-  VOLTAGE_20V = 20
+  VOLTAGE_5V = 5,       // 5V (default)
+  VOLTAGE_9V = 9,       // 9V
+  VOLTAGE_12V = 12,     // 12V
+  VOLTAGE_15V = 15,     // 15V
+  VOLTAGE_20V = 20      // 20V
 };
 
 enum STANDSTILL         // Standstill operation
@@ -40,16 +40,16 @@ enum STANDSTILL         // Standstill operation
   BRAKING = 3           // Normal braking
 };
 
-enum MICROSTEPS         // Supported velocity command resolutions
+enum MICROSTEPS         // Velocity resolutions
 {
-  MICROSTEPS_1 = 1,
-  MICROSTEPS_4 = 4,
-  MICROSTEPS_8 = 8,
-  MICROSTEPS_16 = 16,
-  MICROSTEPS_32 = 32,
-  MICROSTEPS_64 = 64,
-  MICROSTEPS_128 = 128,
-  MICROSTEPS_256 = 256
+  MICROSTEPS_1 = 1,     // Full step
+  MICROSTEPS_4 = 4,     // Half step
+  MICROSTEPS_8 = 8,     // Quarter step
+  MICROSTEPS_16 = 16,   // Eighth step
+  MICROSTEPS_32 = 32,   // Sixteenth step
+  MICROSTEPS_64 = 64,   // Thirty-second step
+  MICROSTEPS_128 = 128, // Sixty-fourth step
+  MICROSTEPS_256 = 256  // Hundred-twenty-eighth step
 };
 
 //
@@ -58,7 +58,7 @@ enum MICROSTEPS         // Supported velocity command resolutions
 
 struct Status
 {
-  const char* name;         // Controller name
+  const char* name;         // Controller name for identification
 
   COMMAND commandMode;      // High-level command mode
   CONTROL controlMode;      // Low-level control mode
@@ -97,33 +97,34 @@ struct PositionFeedback
 
 struct Settings
 {
-  const char* name;
+  const char* name;               // Controller name for identification
 
-  CONTROL controlMode;
-  VOLTAGE voltage;
-  int current;
-  int holdCurrent;
-  int holdDelay;
-  MICROSTEPS microstepsPerStep;
-  int stallThreshold;
-  STANDSTILL standstillMode;
-  int coolStepDurationThreshold;
-  int buttonVelocity;
+  CONTROL controlMode;            // Low-level control mode
+  VOLTAGE voltage;                // USB voltage
+  int current;                    // Run at current %
+  int holdCurrent;                // Hold at current %
+  int holdDelay;                  // Hold delay in ms
+  MICROSTEPS microstepsPerStep;   // Velocity resolution
+  int stallThreshold;             // Stall detection threshold
+  STANDSTILL standstillMode;      // Standstill operation
+  int coolStepDurationThreshold;  // CoolStep duration threshold
+  int buttonVelocity;             // Button velocity
+  bool enableLogging;             // Enable serial monitor/plotter
 
-  int count;
-  int encoderMin;
-  int encoderMax;
-  double positionMin;
-  double positionMax;
-  int velocityMin;
-  int velocityMax;
+  int count;                      // Microstep counter (relative encoder)
+  int encoderMin;                 // Minimum absolute encoder value
+  int encoderMax;                 // Maximum absolute encoder value
+  double positionMin;             // Minimum scaled encoder value
+  double positionMax;             // Maximum scaled encoder value
+  int velocityMin;                // Minimum velocity
+  int velocityMax;                // Maximum velocity
 
-  double Kp;
-  double Ki;
-  double Kd;
-  double iMin;
-  double iMax;
-  double tolerance;
+  double Kp;                      // Proportional gain
+  double Ki;                      // Integral gain
+  double Kd;                      // Derivative gain
+  double iMin;                    // Minimum integral term
+  double iMax;                    // Maximum integral term
+  double tolerance;               // Position command tolerance
 };
 
 //

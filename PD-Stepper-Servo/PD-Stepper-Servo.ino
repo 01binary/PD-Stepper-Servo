@@ -95,6 +95,7 @@ double iMax = 100;                        // PID Integral max
 int velocityMin = 10;                     // PID min velocity
 int velocityMax = 1440;                   // PID max velocity
 int buttonVelocity = 30;                  // Manual control velocity
+bool enableLogging = true;                // Log messages over Serial port
 
 // Encoder State
 
@@ -154,6 +155,7 @@ void initMotor();
 void readMotor();
 void writeMotorEnabled(bool enabled);
 void writeMotorVelocity(int velocity);
+void resetMotor();
 void initController();
 void controller(void *pvParameters);
 void enableCommand(bool enabled);
@@ -173,7 +175,10 @@ void setup()
 {
   delay(STARTUP_DELAY_MS);
 
-  Serial.begin(115200);
+  if (enableLogging)
+  {
+    Serial.begin(115200);
+  }
 
   readSettings();
 
@@ -187,6 +192,7 @@ void setup()
     "NETWORK",
     "PASSWORD",
     8080,
+    enableLogging,
     enableCommand,
     positionCommand,
     velocityCommand,
@@ -296,19 +302,7 @@ void controller(void *pvParameters)
       // Stop if within tolerance
       if (abs(error) <= tolerance)
       {
-        if (commandedVelocity != 0)
-        {
-          proportionalError = error;
-          integralError = 0.0;
-          derivativeError = 0.0;
-          proportional = 0.0;
-          integral = 0.0;
-          derivative = 0.0;
-          commandedVelocity = 0;
-  
-          writeMotorVelocity(0);
-        }
-
+        resetMotor();
         continue;
       }
 
@@ -361,6 +355,21 @@ void controller(void *pvParameters)
       }
 
       writeMotorVelocity(-commandedVelocity);
+
+      if (enableLogging)
+      {
+        Serial.print("goal:");
+        Serial.print(commandedPosition);
+        Serial.print(",");
+        Serial.print("position:");
+        Serial.print(position);
+        Serial.print(",");
+        Serial.print("velocity:");
+        Serial.print(commandedVelocity);
+        Serial.print(",");
+        Serial.print("error:");
+        Serial.println(error);
+      }
     }
 
     // Sleep
@@ -472,6 +481,20 @@ void writeMotorEnabled(bool enabled)
 void writeMotorVelocity(int velocity)
 {
   motorDriver.moveAtVelocity(velocity * microsteps);
+}
+
+void resetMotor()
+{
+  commandMode = MANUAL;
+  proportionalError = 0.0;
+  integralError = 0.0;
+  derivativeError = 0.0;
+  proportional = 0.0;
+  integral = 0.0;
+  derivative = 0.0;
+  commandedVelocity = 0;
+
+  writeMotorVelocity(0);
 }
 
 void readMotor()
@@ -667,10 +690,8 @@ void velocityCommand(int command)
 
 void settingsCommand(const Settings& settings)
 {
-  // Reset motor
-  commandMode = MANUAL;
-  commandedVelocity = 0;
-  writeMotorVelocity(0);
+  // Stop motor
+  resetMotor();
 
   // Apply settings
   if (name != settings.name)
@@ -741,7 +762,7 @@ void settingsCommand(const Settings& settings)
   }
 
   buttonVelocity = settings.buttonVelocity;
-
+  enableLogging = settings.enableLogging;
   encoderMin = settings.encoderMin;
   encoderMax = settings.encoderMax;
   positionMin = settings.positionMin;
@@ -810,6 +831,7 @@ void settingsFeedback(Settings& settings)
   settings.stallThreshold = stallThreshold;
   settings.standstillMode = standstillMode;
   settings.buttonVelocity = buttonVelocity;
+  settings.enableLogging = enableLogging;
   settings.coolStepDurationThreshold = coolStepDurationThreshold;
   settings.encoderMin = encoderMin;
   settings.encoderMax = encoderMax;

@@ -65,6 +65,7 @@ void initRestInterface(
   const char* ssid,
   const char* password,
   int port,
+  bool enableLogging,
   EnableCommandPtr enableCommand,
   PositionCommandPtr positionCommand,
   VelocityCommandPtr velocityCommand,
@@ -83,8 +84,11 @@ void initRestInterface(
     delay(500);
   }
 
-  Serial.print("Connected as ");
-  Serial.println(WiFi.localIP());
+  if (enableLogging)
+  {
+    Serial.print("Connected as ");
+    Serial.println(WiFi.localIP());
+  }
 
   // Create server
   pServer = new AsyncWebServer(port);
@@ -137,6 +141,7 @@ void initRestInterface(
     doc["stallThreshold"] = settings.stallThreshold;
     doc["coolStepDurationThreshold"] = settings.coolStepDurationThreshold;
     doc["buttonVelocity"] = settings.buttonVelocity;
+    doc["enableLogging"] = settings.enableLogging;
     doc["encoderMin"] = settings.encoderMin;
     doc["encoderMax"] = settings.encoderMax;
     doc["positionMin"] = settings.positionMin;
@@ -255,6 +260,7 @@ void initRestInterface(
     settings.stallThreshold = doc["stallThreshold"].as<int>();
     settings.coolStepDurationThreshold = doc["coolStepDurationThreshold"].as<int>();
     settings.buttonVelocity = doc["buttonVelocity"].as<int>();
+    settings.enableLogging = doc["enableLogging"].as<bool>();
     settings.encoderMin = doc["encoderMin"].as<int>();
     settings.encoderMax = doc["encoderMax"].as<int>();
     settings.positionMin = doc["positionMin"].as<double>();
