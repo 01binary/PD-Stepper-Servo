@@ -80,3 +80,32 @@ Whether you chose *Automatic* or *Manual* upload mode, the upload is equally as 
 If the upload fails more than twice in a row, try re-opening Arduino IDE and unplugging/re-plugging PD Stepper.
 
 It is possible for the upload to fail more than 5 times in a row but then succeed - patience and maintaining a calm composure is important.
+
+## Interface
+
+PD Stepper Servo supports REST API and Micro ROS interfaces.
+
+### REST API
+
+The PD Stepper REST API interface is configured with this statement in `PD-Stepper-Servo.ino`:
+
+```
+  initRestInterface(
+    "NETWORK",
+    "PASSWORD",
+    8080,
+    ...
+  );
+```
+
+Replace `NETWORK` with your wireless network name, `PASSWORD` with your network password.
+
+PD Stepper Servo will automatically join the specified network and start a server on port `8080`, unless you specify a different port.
+
+Once joined, the IP Address will be printed to serial port.
+
+When the address is known, you can import [PD Stepper PostMan Collection](./PD-Stepper.postman_collection.json) into PostMan and call the endpoints to get status, configure, settings, and send position or velocity commands.
+
+### ROS API
+
+The MicroROS API for ROS2 will be implemented next.
