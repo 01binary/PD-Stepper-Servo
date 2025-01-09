@@ -1,2 +1,6 @@
 # PD-Stepper-Servo
-Control PD-Stepper in Position, Velocity, and Effort modes
+
+A controller that helps integrate [PD Stepper](https://github.com/joshr120/PD-Stepper) into robotics projects.
+
+## Interfaces
+

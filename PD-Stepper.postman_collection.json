@@ -1,0 +1,189 @@
+{
+	"info": {
+		"_postman_id": "7d1f1b82-5b68-4e35-b05e-2ed4fe54912b",
+		"name": "PD Stepper Servo",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Get Status",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://{{PDStepper}}/status",
+					"protocol": "http",
+					"host": [
+						"{{PDStepper}}"
+					],
+					"path": [
+						"status"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get Settings",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://{{PDStepper}}/settings",
+					"protocol": "http",
+					"host": [
+						"{{PDStepper}}"
+					],
+					"path": [
+						"settings"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Save Settings",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"name\": \"PD-Stepper\",\n    \"controlMode\": \"current\",\n    \"standstillMode\": \"normal\",\n    \"voltage\": 5,\n    \"current\": 100,\n    \"holdCurrent\": 100,\n    \"holdDelay\": 0,\n    \"microstepsPerStep\": 16,\n    \"stallThreshold\": 70,\n    \"coolStepDurationThreshold\": 5000,\n    \"buttonVelocity\": 30,\n    \"encoderMin\": 0,\n    \"encoderMax\": 4096,\n    \"positionMin\": 0,\n    \"positionMax\": 1,\n    \"velocityMin\": 50,\n    \"velocityMax\": 1440,\n    \"Kp\": 1000,\n    \"Ki\": 10,\n    \"Kd\": 10,\n    \"iMin\": -10,\n    \"iMax\": 10,\n    \"tolerance\": 0.05\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://{{PDStepper}}/settings",
+					"protocol": "http",
+					"host": [
+						"{{PDStepper}}"
+					],
+					"path": [
+						"settings"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Enable Command",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"enable\": true\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://{{PDStepper}}/enable",
+					"protocol": "http",
+					"host": [
+						"{{PDStepper}}"
+					],
+					"path": [
+						"enable"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Velocity Command",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"velocity\": 0\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://{{PDStepper}}/velocity",
+					"protocol": "http",
+					"host": [
+						"{{PDStepper}}"
+					],
+					"path": [
+						"velocity"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Velocity Feedback",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://{{PDStepper}}/velocity",
+					"protocol": "http",
+					"host": [
+						"{{PDStepper}}"
+					],
+					"path": [
+						"velocity"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Position Command",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"position\": 0\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://{{PDStepper}}/position",
+					"protocol": "http",
+					"host": [
+						"{{PDStepper}}"
+					],
+					"path": [
+						"position"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Position Feedback",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://{{PDStepper}}/position",
+					"protocol": "http",
+					"host": [
+						"{{PDStepper}}"
+					],
+					"path": [
+						"position"
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}
