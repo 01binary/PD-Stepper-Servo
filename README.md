@@ -1,6 +1,6 @@
 # PD-Stepper-Servo
 
-Controller that helps integrate [PD Stepper](https://github.com/joshr120/PD-Stepper) into robotics projects. Currently supports REST API interface, soon to be integrated with ROS.
+Controller that helps integrate [PD Stepper](https://github.com/joshr120/PD-Stepper) into robotics projects by adding close loop PID control.
 
 If you are not familiar with stepper motors check out [Stepper Motors and Arduino - The Ultimate Guide](https://www.youtube.com/watch?v=7spK_BkMJys).
 
