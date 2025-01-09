@@ -87,12 +87,12 @@ unsigned long lastDebounceTime = 0;       // Last button debounce time
 Preferences preferences;                  // Used to save settings to flash
 String name = "PD-Stepper";               // Controller name, since several can be connected
 double tolerance = 0.1;                   // Position command success tolerance
-double Kp = 100;                          // PID Proportional gain
-double Ki = 10;                           // PID Integral gain
+double Kp = 1000;                         // PID Proportional gain
+double Ki = 100;                          // PID Integral gain
 double Kd = 10;                           // PID Derivative gain
-double iMin = -10;                        // PID Integral min
-double iMax = 10;                         // PID Integral max
-int velocityMin = 5;                      // PID min velocity
+double iMin = -100;                       // PID Integral min
+double iMax = 100;                        // PID Integral max
+int velocityMin = 10;                     // PID min velocity
 int velocityMax = 1440;                   // PID max velocity
 int buttonVelocity = 30;                  // Manual control velocity
 
@@ -299,7 +299,13 @@ void controller(void *pvParameters)
         if (commandedVelocity != 0)
         {
           proportionalError = error;
+          integralError = 0.0;
+          derivativeError = 0.0;
+          proportional = 0.0;
+          integral = 0.0;
+          derivative = 0.0;
           commandedVelocity = 0;
+  
           writeMotorVelocity(0);
         }
 
@@ -354,7 +360,7 @@ void controller(void *pvParameters)
         commandedVelocity = rawCommand;
       }
 
-      writeMotorVelocity(commandedVelocity);
+      writeMotorVelocity(-commandedVelocity);
     }
 
     // Sleep
@@ -574,7 +580,7 @@ void readEncoder()
   rawPosition = reading;
 
   // Calculate normalized position
-  double norm = 
+  double norm =
     double(constrain(rawPosition, encoderMin, encoderMax) - encoderMin)
     / double(encoderMax - encoderMin);
 
