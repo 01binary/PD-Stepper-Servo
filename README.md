@@ -102,6 +102,8 @@ Replace `NETWORK` with your wireless network name, `PASSWORD` with your network 
 
 PD Stepper Servo will automatically join the specified network and start a server on port `8080`, unless you specify a different port.
 
+> Changing network, password, or port requires re-uploading the code to PD Stepper
+
 Once joined, the IP Address will be printed to serial port.
 
 When the address is known, you can import [PD Stepper PostMan Collection](./PD-Stepper.postman_collection.json) into PostMan and call the endpoints to get status, configure, settings, and send position or velocity commands.
