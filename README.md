@@ -2,6 +2,8 @@
 
 Controller that helps integrate [PD Stepper](https://github.com/joshr120/PD-Stepper) into robotics projects. Currently supports REST API interface, soon to be integrated with ROS.
 
+If you are not familiar with stepper motors check out [Stepper Motors and Arduino - The Ultimate Guide](https://www.youtube.com/watch?v=7spK_BkMJys).
+
 ## Install IDE
 
 The simplest way to build and upload controller code to ESP32S3 Dev Kit on PD Stepper board is by using the Arduino IDE.
