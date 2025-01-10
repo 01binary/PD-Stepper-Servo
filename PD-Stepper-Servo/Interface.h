@@ -116,6 +116,7 @@ struct Settings
   int encoderMax;                 // Maximum absolute encoder value
   double positionMin;             // Minimum scaled encoder value
   double positionMax;             // Maximum scaled encoder value
+  bool positionInvert;            // Whether to invert encoder position
   int velocityMin;                // Minimum velocity
   int velocityMax;                // Maximum velocity
 

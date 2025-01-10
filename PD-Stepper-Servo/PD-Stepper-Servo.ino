@@ -86,9 +86,9 @@ unsigned long lastDebounceTime = 0;       // Last button debounce time
 
 Preferences preferences;                  // Used to save settings to flash
 String name = "PD-Stepper";               // Controller name, since several can be connected
-double tolerance = 0.1;                   // Position command success tolerance
+double tolerance = 0.01;                  // Position command success tolerance
 double Kp = 1000;                         // PID Proportional gain
-double Ki = 100;                          // PID Integral gain
+double Ki = 10;                           // PID Integral gain
 double Kd = 10;                           // PID Derivative gain
 double iMin = -100;                       // PID Integral min
 double iMax = 100;                        // PID Integral max
@@ -111,6 +111,7 @@ int encoderMin = 0;                       // Normalized position min
 int encoderMax = AS5600_MAX;              // Normalized position max
 double positionMin = 0.0;                 // Scaled position min
 double positionMax = 1.0;                 // Scaled position max
+bool positionInvert = true;               // Invert position from encoder
 
 // Stepper State
 
@@ -269,6 +270,36 @@ bool powerEnabled()
   return true;
 }
 
+void logPosition(double error)
+{
+  Serial.print("goal:");
+  Serial.print(commandedPosition);
+  Serial.print(",");
+  Serial.print("position:");
+  Serial.print(position);
+  Serial.print(",");
+  Serial.print("velocity:");
+  Serial.print(double(commandedVelocity) / double(velocityMax));
+  Serial.print(",");
+  Serial.print("error:");
+  Serial.print(error);
+  Serial.print(",");
+  Serial.print("integralError:");
+  Serial.print(integralError);
+  Serial.print(",");
+  Serial.print("derivativeError:");
+  Serial.println(derivativeError);
+}
+
+void logVelocity()
+{
+  Serial.print("position:");
+  Serial.print(position);
+  Serial.print(",");
+  Serial.print("velocity:");
+  Serial.println(double(commandedVelocity) / double(velocityMax));
+}
+
 // Velocity and Position control
 void controller(void *pvParameters)
 {
@@ -293,6 +324,11 @@ void controller(void *pvParameters)
     if (commandMode == VELOCITY)
     {
       writeMotorVelocity(commandedVelocity);
+
+      if (enableLogging)
+      {
+        logVelocity();
+      }
     }
     else if (commandMode == POSITION)
     {
@@ -302,6 +338,11 @@ void controller(void *pvParameters)
       // Stop if within tolerance
       if (abs(error) <= tolerance)
       {
+        if (enableLogging)
+        {
+          logPosition(error);
+        }
+
         resetMotor();
         continue;
       }
@@ -335,40 +376,34 @@ void controller(void *pvParameters)
       derivative = Kd * derivativeError;
 
       // Calculate command
-      int rawCommand = int(proportional + integral + derivative);
+      int command = int(proportional + integral + derivative);
+      int speed = abs(command);
+      int direction = command >= 0 ? 1 : -1;
 
-      if (rawCommand == 0)
+      // Limit magnitude
+      if (speed != 0)
       {
-        commandedVelocity = 0;
-      }
-      else if (rawCommand < velocityMin)
-      {
-        commandedVelocity = velocityMin;
-      }
-      else if (rawCommand > velocityMax)
-      {
-        commandedVelocity = velocityMax;
-      }
-      else
-      {
-        commandedVelocity = rawCommand;
+        if (speed < velocityMin)
+        {
+          speed = velocityMin;
+        }
+        else if (speed > velocityMax)
+        {
+          speed = velocityMax;
+        }
       }
 
-      writeMotorVelocity(-commandedVelocity);
+      int limitedVelocity = direction * speed;
+
+      if (commandedVelocity != limitedVelocity)
+      {
+        commandedVelocity = limitedVelocity;
+        writeMotorVelocity(commandedVelocity);
+      }
 
       if (enableLogging)
       {
-        Serial.print("goal:");
-        Serial.print(commandedPosition);
-        Serial.print(",");
-        Serial.print("position:");
-        Serial.print(position);
-        Serial.print(",");
-        Serial.print("velocity:");
-        Serial.print(commandedVelocity);
-        Serial.print(",");
-        Serial.print("error:");
-        Serial.println(error);
+        logPosition(error);
       }
     }
 
@@ -603,12 +638,17 @@ void readEncoder()
   rawPosition = reading;
 
   // Calculate normalized position
-  double norm =
-    double(constrain(rawPosition, encoderMin, encoderMax) - encoderMin)
-    / double(encoderMax - encoderMin);
+  int clamped = constrain(rawPosition, encoderMin, encoderMax);
+  double normalized = double(clamped - encoderMin) / double(encoderMax - encoderMin);
+
+  // Invert
+  if (positionInvert)
+  {
+    normalized = 1.0 - normalized;
+  }
 
   // Scale to final position range
-  position = positionMin + norm * (positionMax - positionMin);
+  position = positionMin + normalized * (positionMax - positionMin);
 }
 
 void readSettings()
@@ -625,10 +665,12 @@ void readSettings()
   standstillMode = (STANDSTILL)preferences.getInt("standstillMode", (int)standstillMode);
   coolStepDurationThreshold = preferences.getInt("coolStepDurationThreshold", coolStepDurationThreshold);
   buttonVelocity = preferences.getInt("buttonVelocity", buttonVelocity);
+  enableLogging = preferences.getBool("enableLogging", enableLogging);
   encoderMin = preferences.getInt("encoderMin", encoderMin);
   encoderMax = preferences.getInt("encoderMax", encoderMax);
   positionMin = preferences.getDouble("positionMin", positionMin);
   positionMax = preferences.getDouble("positionMax", positionMax);
+  positionInvert = preferences.getBool("positionInvert", positionInvert);
   velocityMin = preferences.getInt("velocityMin", velocityMin);
   velocityMax = preferences.getInt("velocityMax", velocityMax);
   Kp = preferences.getDouble("Kp", Kp);
@@ -654,10 +696,12 @@ void writeSettings()
   preferences.putInt("standstillMode", (int)standstillMode);
   preferences.putInt("coolStepDurationThreshold", coolStepDurationThreshold);
   preferences.putInt("buttonVelocity", buttonVelocity);
+  preferences.putBool("enableLogging", enableLogging);
   preferences.putInt("encoderMin", encoderMin);
   preferences.putInt("encoderMax", encoderMax);
   preferences.putDouble("positionMin", positionMin);
   preferences.putDouble("positionMax", positionMax);
+  preferences.putBool("positionInvert", positionInvert);
   preferences.putInt("velocityMin", velocityMin);
   preferences.putInt("velocityMax", velocityMax);
   preferences.putDouble("Kp", Kp);
@@ -672,6 +716,12 @@ void writeSettings()
 void enableCommand(bool command)
 {
   enabled = command;
+  writeMotorEnabled(enabled);
+
+  if (!enabled)
+  {
+    resetMotor();
+  }
 }
 
 void positionCommand(double command)
@@ -767,6 +817,7 @@ void settingsCommand(const Settings& settings)
   encoderMax = settings.encoderMax;
   positionMin = settings.positionMin;
   positionMax = settings.positionMax;
+  positionInvert = settings.positionInvert;
   velocityMin = settings.velocityMin;
   velocityMax = settings.velocityMax;
 
@@ -837,6 +888,7 @@ void settingsFeedback(Settings& settings)
   settings.encoderMax = encoderMax;
   settings.positionMin = positionMin;
   settings.positionMax = positionMax;
+  settings.positionInvert = positionInvert;
   settings.velocityMin = velocityMin;
   settings.velocityMax = velocityMax;
   settings.Kp = Kp;

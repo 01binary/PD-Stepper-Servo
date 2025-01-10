@@ -146,6 +146,7 @@ void initRestInterface(
     doc["encoderMax"] = settings.encoderMax;
     doc["positionMin"] = settings.positionMin;
     doc["positionMax"] = settings.positionMax;
+    doc["positionInvert"] = settings.positionInvert;
     doc["velocityMin"] = settings.velocityMin;
     doc["velocityMax"] = settings.velocityMax;
     doc["Kp"] = settings.Kp;
@@ -265,6 +266,7 @@ void initRestInterface(
     settings.encoderMax = doc["encoderMax"].as<int>();
     settings.positionMin = doc["positionMin"].as<double>();
     settings.positionMax = doc["positionMax"].as<double>();
+    settings.positionInvert = doc["positionInvert"].as<bool>();
     settings.velocityMin = doc["velocityMin"].as<int>();
     settings.velocityMax = doc["velocityMax"].as<int>();
     settings.Kp = doc["Kp"].as<double>();
