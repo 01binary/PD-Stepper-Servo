@@ -66,7 +66,7 @@ There are two ways to upload code to ESP32 S3 Dev Kit:
 
 * Select `Tools` -> `USB CDC On Boot` -> `Enabled` (only done once)
 * Hold `Boot` button on PD Stepper board, press `Reset` button, then let go of both buttons
-* The `3V3` LED on PD Stepper Board should go off, showing that ESP32 is accepting only Upload commands and not running code
+* The `PG` LED (*LED 3*) on PD Stepper Board should go off, showing that ESP32 is accepting only Upload commands and not running code
 * Click Upload in Arduino IDE:
 
   ![Upload](./Images/Upload.png)
@@ -75,13 +75,13 @@ There are two ways to upload code to ESP32 S3 Dev Kit:
 
 ### Troubleshooting
 
-Uploads to ESP32S3 Dev Kit often fail even after installing the firmware.
+Uploads to ESP32S3 Dev Kit often fail even after installing firmware.
 
-Whether you chose *Automatic* or *Manual* upload mode, the upload is equally as likely to fail.
+If your upload failed more than twice in a row, try using *manual* uploading mode, and ensure that `PG` LED (*LED3*) on PD Stepper board is **off*.
 
-If the upload fails more than twice in a row, try re-opening Arduino IDE and unplugging/re-plugging PD Stepper.
+When this LED is on, that indicates the board is currently running controller code and therefore not ready to accept an upload.
 
-It is possible for the upload to fail more than 5 times in a row but then succeed - patience and maintaining a calm composure is important.
+If all else fails, try re-connecting PD Stepper and restarting IDE.
 
 ## Interface
 
