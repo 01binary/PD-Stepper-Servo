@@ -2,6 +2,8 @@
 
 Controller that helps integrate [PD Stepper](https://github.com/joshr120/PD-Stepper) into robotics projects by adding closed loop position PID control.
 
+![PD Stepper Board](./Images/Board.png)
+
 If you are not familiar with stepper motors check out [Stepper Motors and Arduino - The Ultimate Guide](https://www.youtube.com/watch?v=7spK_BkMJys).
 
 ## Install IDE
@@ -72,6 +74,8 @@ There are two ways to upload code to ESP32 S3 Dev Kit:
   ![Upload](./Images/Upload.png)
 
 > Serial Monitor and Serial Plotter can now be used to view output written to Serial port.
+
+Before your first upload, modify `PD-Stepper-Servo.ino` by specifying your [wireless network name and password](#rest-api).
 
 ### Troubleshooting
 
