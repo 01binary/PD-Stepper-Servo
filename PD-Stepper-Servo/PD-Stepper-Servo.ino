@@ -132,7 +132,7 @@ int holdCurrent = 30;                     // Hold current % if current controlle
 int holdDelay = 0;                        // Hold delay cycles
 MICROSTEPS microsteps = MICROSTEPS_32;    // Velocity resolution
 STANDSTILL standstillMode = NORMAL;       // What happens when velocity set to zero
-int stallThreshold = 70;                  // Stall threshold
+int stallThreshold = 80;                  // Stall threshold
 int coolStepDurationThreshold = 5000;     // CoolStep activation threshold
 
 // Power Delivery
