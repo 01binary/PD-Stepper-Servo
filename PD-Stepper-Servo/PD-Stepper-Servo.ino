@@ -86,8 +86,8 @@ unsigned long lastDebounceTime = 0;       // Last button debounce time
 
 Preferences preferences;                  // Used to save settings to flash
 String name = "PD-Stepper";               // Controller name, since several can be connected
-double tolerance = 0.01;                  // Position command success tolerance
-double Kp = 1000;                         // PID Proportional gain
+double tolerance = 0.05;                  // Position command success tolerance
+double Kp = 300;                          // PID Proportional gain
 double Ki = 10;                           // PID Integral gain
 double Kd = 10;                           // PID Derivative gain
 double iMin = -100;                       // PID Integral min
