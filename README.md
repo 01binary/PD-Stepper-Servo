@@ -55,6 +55,8 @@ There are two ways to upload code to ESP32 S3 Dev Kit:
 * **Automatic**: works just like uploading code to Arduino, but you lose the ability to use Serial Monitor and Serial Plotter in Arduino IDE. If you are not debugging by logging messages to Serial port, this method is preferred.
 * **Manual**: requires you to momentarily hold *Boot* button on PD Stepper board, press *Reset* button, and then let both buttons up. This puts ESP32 into upload mode, which lets you upload with *USB CDC on Boot* option *enabled* and use Serial Monitor and Serial Plotter.
 
+![Board Labels](./Images/BoardLabels.png)
+
 ### Automatic
 
 * Select `Tools` -> `USB CDC On Boot` -> `Disabled` (only done once)
