@@ -13,8 +13,8 @@
 #include <ESPAsyncWebServer.h> // https://github.com/me-no-dev/ESPAsyncWebServer
 #include <AsyncTCP.h>          // https://github.com/me-no-dev/AsyncTCP
 #include <ArduinoJson.h>       // https://github.com/bblanchon/ArduinoJson
-#include <esp_wifi.h>
-#include "Interface.h"
+#include <esp_wifi.h>          // https://docs.espressif.com/projects/arduino-esp32/en/latest/api/wifi.html
+#include "Interface.h"         // Common interface definitions
 
 //
 // Definitions
@@ -78,6 +78,9 @@ void initRestInterface(
   // Connect to WiFi
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
+
+  Serial.println("MAC address: ");
+  Serial.println(WiFi.macAddress());
 
   while (WiFi.waitForConnectResult() != WL_CONNECTED)
   {
